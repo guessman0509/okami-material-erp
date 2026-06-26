@@ -7,7 +7,7 @@
     <title>大神燒肉 材料管理 ERP</title>
     <meta name="theme-color" content="#8f1f1f" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="大神材料 ERP" />
+    <meta name="apple-mobile-web-app-title" content="大神材料 ERP v3.9" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="style.css" />
@@ -50,6 +50,10 @@
           <button class="nav-item" data-tab="analysis">支出分析</button>
           <button class="nav-item" data-tab="quickAdd">快速建檔</button>
           <button class="nav-item" data-tab="aiReceipt">拍照建檔</button>
+          <button class="nav-item" data-tab="suppliers">供應商管理</button>
+          <button class="nav-item" data-tab="itemAdmin">品項管理</button>
+          <button class="nav-item" data-tab="reports">月報表</button>
+          <button class="nav-item" data-tab="pendingAi">AI待確認</button>
           <button class="nav-item" data-tab="settings">設定</button>
         </nav>
 
@@ -303,6 +307,107 @@
           </section>
         </section>
 
+
+
+        <section id="suppliers" class="tab-panel">
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>供應商管理與價格追蹤</h2>
+                <p class="muted">整合供應商主檔、採購金額、常購品項與同品項比價，協助判斷是否需要議價或更換供應商。</p>
+              </div>
+              <div class="inline-tools">
+                <input id="supplierSearch" type="search" placeholder="搜尋供應商..." />
+                <button id="openSupplierFormButton" class="primary" type="button">新增／更新供應商</button>
+              </div>
+            </div>
+            <div id="supplierInsightCards" class="mini-card-grid"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>供應商</th><th>聯絡人</th><th>電話</th><th>主要品項</th><th class="num">本月金額</th><th class="num">累計金額</th><th>最後採購</th><th>推薦狀態</th></tr>
+                </thead>
+                <tbody id="suppliersBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="itemAdmin" class="tab-panel">
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>標準品項管理</h2>
+                <p class="muted">用來統一「牛五花／牛五花肉片／美國牛五花」這類不同寫法，避免成本分析失真。</p>
+              </div>
+              <div class="inline-tools">
+                <input id="itemAdminSearch" type="search" placeholder="搜尋品項、別名、分類..." />
+                <button id="openMaterialFormButton" class="primary" type="button">新增／更新品項</button>
+              </div>
+            </div>
+            <div class="mini-card-grid">
+              <article class="mini-card"><span>標準品項數</span><strong id="standardItemCount">0</strong></article>
+              <article class="mini-card"><span>需要統一命名</span><strong id="aliasRiskCount">0</strong></article>
+              <article class="mini-card"><span>最近漲價品項</span><strong id="risingItemCount">0</strong></article>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>品項</th><th>標準品項</th><th>別名</th><th>分類</th><th>預設供應商</th><th>單位</th><th class="num">最新單價</th><th>最近採購日</th><th>使用中</th><th>操作</th></tr>
+                </thead>
+                <tbody id="itemAdminBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="reports" class="tab-panel">
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>月報表與成本分析</h2>
+                <p class="muted">快速查看每月採購總額、分類占比、供應商支出、品項漲跌與異常提醒。</p>
+              </div>
+              <div class="inline-tools">
+                <input id="reportMonthInput" type="month" />
+                <button id="exportReportButton" class="secondary" type="button">匯出月報CSV</button>
+              </div>
+            </div>
+            <div class="cards compact-cards">
+              <article class="metric-card"><span>本月總採購</span><strong id="reportTotal">$0</strong><small id="reportMonthChange">較上月 0%</small></article>
+              <article class="metric-card"><span>食材成本</span><strong id="reportFoodTotal">$0</strong><small>肉品、海鮮、蔬菜、調味料</small></article>
+              <article class="metric-card"><span>酒水飲品</span><strong id="reportBeverageTotal">$0</strong><small>酒水與無酒精飲品</small></article>
+              <article class="metric-card"><span>最大支出分類</span><strong id="reportTopCategory">-</strong><small id="reportTopCategoryAmount">$0</small></article>
+            </div>
+            <div class="grid two">
+              <section class="sub-panel"><h3>分類成本排行</h3><div id="reportCategoryChart" class="bar-chart"></div></section>
+              <section class="sub-panel"><h3>供應商支出排行</h3><div id="reportSupplierChart" class="bar-chart"></div></section>
+            </div>
+            <section class="sub-panel">
+              <h3>品項價格異常與漲跌</h3>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>品項</th><th>供應商</th><th class="num">本次標準單價</th><th class="num">歷史平均</th><th class="num">差異</th><th>提醒</th></tr></thead>
+                  <tbody id="reportPriceAlertsBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <section id="pendingAi" class="tab-panel">
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>AI 待確認單據</h2>
+                <p class="muted">AI 辨識不直接入帳，先進入待確認清單，由有權限的人人工確認後批次寫入採購紀錄。</p>
+              </div>
+              <button class="secondary" data-jump="aiReceipt" type="button">上傳新單據</button>
+            </div>
+            <div id="pendingAiList" class="quote-list"></div>
+          </section>
+        </section>
+
         <section id="settings" class="tab-panel">
           <section class="panel">
             <h2>系統設定</h2>
@@ -313,7 +418,7 @@
               </div>
               <div>
                 <strong>版本</strong>
-                <span>Okami ERP v3.4：加入手機快速 Key-in 排版、常用供應商／品項快捷鍵、採購紀錄手機卡片式顯示與底部導覽。</span>
+                <span>Okami ERP v3.9 Mega：整合 v3.5 供應商價格追蹤、v3.6 標準品項管理、v3.8 月報表成本分析、v3.9 AI 待確認流程。</span>
               </div>
               <div>
                 <strong>目前登入人員</strong>
@@ -391,6 +496,69 @@
             <button id="voidPurchaseCancelButton" class="secondary" type="button">取消</button>
           </div>
         </form>
+      </section>
+    </div>
+
+
+
+    <div id="supplierFormModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="supplierFormTitle">
+      <section class="modal-card wide">
+        <div class="modal-head">
+          <div><p class="eyebrow">Supplier Master</p><h2 id="supplierFormTitle">新增／更新供應商</h2></div>
+          <button id="supplierFormCloseButton" class="icon-button" type="button" aria-label="關閉">×</button>
+        </div>
+        <form id="supplierForm" class="form-grid">
+          <input name="供應商ID" type="hidden" />
+          <label>供應商名稱<input name="供應商名稱" type="text" required /></label>
+          <label>聯絡人<input name="聯絡人" type="text" /></label>
+          <label>電話<input name="電話" type="tel" /></label>
+          <label>Email<input name="Email" type="email" /></label>
+          <label>供應商類型<input name="供應商類型" type="text" placeholder="例：肉品、酒水、包材" /></label>
+          <label>付款方式<input name="付款方式" type="text" /></label>
+          <label class="span-2">地址<input name="地址" type="text" /></label>
+          <label class="span-2">主要品項<input name="主要品項" type="text" placeholder="例：牛五花、牛肋條、橫隔膜" /></label>
+          <label>是否使用中<select name="是否使用中"><option>是</option><option>否</option></select></label>
+          <label>推薦狀態<select name="推薦狀態"><option>正常</option><option>推薦</option><option>觀察</option><option>停用</option></select></label>
+          <label class="span-2">備註<input name="備註" type="text" /></label>
+          <div class="form-actions span-2"><button class="primary" type="submit">儲存供應商</button><button id="supplierFormCancelButton" class="secondary" type="button">取消</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div id="materialFormModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="materialFormTitle">
+      <section class="modal-card wide">
+        <div class="modal-head">
+          <div><p class="eyebrow">Item Standardization</p><h2 id="materialFormTitle">新增／更新標準品項</h2></div>
+          <button id="materialFormCloseButton" class="icon-button" type="button" aria-label="關閉">×</button>
+        </div>
+        <form id="materialForm" class="form-grid">
+          <input name="ERP代碼" type="hidden" />
+          <label>品項<input name="品項" type="text" required /></label>
+          <label>標準品項名稱<input name="標準品項名稱" type="text" required /></label>
+          <label>品項別名<input name="品項別名" type="text" placeholder="用逗號分隔，例如：牛五花肉片,美國牛五花" /></label>
+          <label>分類<select name="分類" id="materialFormCategorySelect"></select></label>
+          <label>規格<input name="規格" type="text" /></label>
+          <label>預設供應商<input name="預設供應商" type="text" list="supplierDatalist" /></label>
+          <label>單位<select name="單位" id="materialFormUnitSelect"></select></label>
+          <label>換算倍率<input name="換算倍率" type="number" step="0.001" /></label>
+          <label>標準單位<select name="標準單位" id="materialFormStandardUnitSelect"></select></label>
+          <label>最新單價<input name="最新單價" type="number" step="0.01" /></label>
+          <label>安全庫存<input name="安全庫存" type="text" /></label>
+          <label>使用中<select name="使用中"><option>是</option><option>否</option></select></label>
+          <label>價格警戒百分比<input name="價格警戒百分比" type="number" step="1" placeholder="例：15" /></label>
+          <label class="span-2">備註<input name="備註" type="text" /></label>
+          <div class="form-actions span-2"><button class="primary" type="submit">儲存品項</button><button id="materialFormCancelButton" class="secondary" type="button">取消</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div id="aiReviewModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="aiReviewTitle">
+      <section class="modal-card wide">
+        <div class="modal-head">
+          <div><p class="eyebrow">AI Confirmation</p><h2 id="aiReviewTitle">確認 AI 辨識結果</h2></div>
+          <button id="aiReviewCloseButton" class="icon-button" type="button" aria-label="關閉">×</button>
+        </div>
+        <div id="aiReviewContent" class="ai-result"></div>
       </section>
     </div>
 

@@ -9,7 +9,7 @@
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAl5Yt7SD3Eq06zAkSyhDuEYJYC-SHZq3TGfqcIsxeUVhyChDfTCOnk5sWHPSOUxG4/exec"; // 若重新部署 Apps Script，請更新這裡的 /exec 網址
 
 const BRAND = {
-  siteName: "大神材料 ERP v3.4",
+  siteName: "大神材料 ERP v3.9 Mega",
   companyName: "大神燒肉 Okami Yakiniku",
   loginTitle: "大神燒肉 材料管理 ERP"
 };
@@ -1750,3 +1750,446 @@ function showApp() {
 window.addEventListener("resize", () => {
   if (state.purchases) renderPurchaseCardsV34(state.purchases.filter((item) => normalize(Object.values(item).join(" ")).includes(normalize($("#purchaseSearch")?.value || ""))).reverse());
 });
+
+
+/* =============================
+   v3.9 Mega：v3.5 + v3.6 + v3.8 + v3.9
+   供應商管理、標準品項、月報表、AI待確認
+   ============================= */
+
+const V39_VERSION_LABEL = "Okami ERP v3.9 Mega";
+
+window.addEventListener("DOMContentLoaded", () => {
+  initV39Enhancements();
+});
+
+function initV39Enhancements() {
+  BRAND.siteName = "大神材料 ERP v3.9 Mega";
+  setText("#siteName", BRAND.siteName);
+  fillSelect($("#materialFormCategorySelect"), MATERIAL_CATEGORIES, "其他");
+  fillSelect($("#materialFormUnitSelect"), UNIT_OPTIONS, "公斤");
+  fillSelect($("#materialFormStandardUnitSelect"), STANDARD_UNITS, "公克");
+
+  const monthInput = $("#reportMonthInput");
+  if (monthInput && !monthInput.value) monthInput.value = monthKey(new Date());
+
+  bindV39Events();
+}
+
+function bindV39Events() {
+  const bindings = [
+    ["#supplierSearch", "input", renderSuppliersV39],
+    ["#itemAdminSearch", "input", renderItemAdminV39],
+    ["#reportMonthInput", "change", renderReportsV39],
+    ["#openSupplierFormButton", "click", () => openSupplierFormV39()],
+    ["#supplierFormCloseButton", "click", closeSupplierFormV39],
+    ["#supplierFormCancelButton", "click", closeSupplierFormV39],
+    ["#supplierForm", "submit", handleSupplierFormSubmitV39],
+    ["#openMaterialFormButton", "click", () => openMaterialFormV39()],
+    ["#materialFormCloseButton", "click", closeMaterialFormV39],
+    ["#materialFormCancelButton", "click", closeMaterialFormV39],
+    ["#materialForm", "submit", handleMaterialFormSubmitV39],
+    ["#exportReportButton", "click", exportMonthlyReportV39],
+    ["#aiReviewCloseButton", "click", closeAiReviewModalV39]
+  ];
+  bindings.forEach(([selector, eventName, handler]) => {
+    const el = $(selector);
+    if (el) el.addEventListener(eventName, handler);
+  });
+  document.addEventListener("click", handleV39DocumentClick);
+}
+
+async function loadData() {
+  try {
+    showMessage("資料讀取中...", "success");
+    const result = await apiRequest("getBootstrapData", {});
+    state.materials = Array.isArray(result.materials) ? result.materials : [];
+    state.purchases = Array.isArray(result.purchases) ? result.purchases : [];
+    state.suppliers = Array.isArray(result.suppliers) ? result.suppliers : deriveSuppliersV39(state.purchases, []);
+    state.quotes = Array.isArray(result.quotes) ? result.quotes : [];
+    state.reports = result.reports || null;
+    state.dashboard = result.dashboard || buildDashboardLocally(state.materials, activePurchases(state.purchases));
+    if (result.currentUser) {
+      state.currentUser = result.currentUser;
+      sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
+    }
+    if (result.permissions) {
+      setPermissionsV33(state.currentUser || {}, result.permissions);
+      sessionStorage.setItem("erpPermissions", JSON.stringify(state.permissions || {}));
+    }
+    updateUserDisplay();
+    renderAll();
+    updateDatalists();
+    updatePurchasePreview();
+    updateV39AccessUi();
+    hideMessage();
+  } catch (error) {
+    showMessage(error.message || "資料讀取失敗。", "error");
+  }
+}
+
+function renderAll() {
+  renderDashboard();
+  renderMaterials();
+  renderPurchases();
+  renderAnalysis();
+  renderSuppliersV39();
+  renderItemAdminV39();
+  renderReportsV39();
+  renderPendingAiV39();
+}
+
+function updateV39AccessUi() {
+  const canManage = hasPermissionV33("canManageMaterials");
+  const canAi = hasPermissionV33("canUseAiReceipt");
+  const canReports = hasPermissionV33("canViewAnalysis");
+  ["#openSupplierFormButton", "#openMaterialFormButton"].forEach((selector) => {
+    const el = $(selector);
+    if (el) el.disabled = !canManage;
+  });
+  const reportsNav = $('.nav-item[data-tab="reports"]');
+  if (reportsNav) reportsNav.classList.toggle("hidden", !canReports);
+  const pendingNav = $('.nav-item[data-tab="pendingAi"]');
+  if (pendingNav) pendingNav.classList.toggle("hidden", !canAi);
+}
+
+function activeRowsV39() {
+  return activePurchases(state.purchases || []);
+}
+
+function deriveSuppliersV39(purchases, baseSuppliers) {
+  const activeRows = activePurchases(purchases || []);
+  const map = new Map();
+  (baseSuppliers || []).forEach((supplier) => {
+    const name = supplier["供應商名稱"] || supplier["供應商"];
+    if (!name) return;
+    map.set(name, Object.assign({}, supplier, { "供應商名稱": name }));
+  });
+  activeRows.forEach((row) => {
+    const name = row["供應商"] || "未命名供應商";
+    const current = map.get(name) || { "供應商名稱": name, "主要品項": "", "是否使用中": "是" };
+    const amount = numberOrZero(row["金額"]);
+    current.__total = numberOrZero(current.__total) + amount;
+    if (monthKey(parseDate(row["日期"])) === monthKey(new Date())) current.__thisMonth = numberOrZero(current.__thisMonth) + amount;
+    current.__lastDate = current.__lastDate && String(current.__lastDate) > String(row["日期"]) ? current.__lastDate : row["日期"];
+    const items = new Set(String(current.__items || current["主要品項"] || "").split(/[、,，]/).map((x) => x.trim()).filter(Boolean));
+    if (row["品項"]) items.add(row["品項"]);
+    current.__items = Array.from(items).slice(0, 8).join("、");
+    map.set(name, current);
+  });
+  return Array.from(map.values()).map((s) => Object.assign({}, s, {
+    "主要品項": s["主要品項"] || s.__items || "",
+    "最後採購日": s["最後採購日"] || s.__lastDate || "",
+    "本月採購金額": numberOrZero(s["本月採購金額"] || s.__thisMonth),
+    "累計採購金額": numberOrZero(s["累計採購金額"] || s.__total),
+    "推薦狀態": s["推薦狀態"] || "正常"
+  })).sort((a, b) => numberOrZero(b["累計採購金額"]) - numberOrZero(a["累計採購金額"]));
+}
+
+function renderSuppliersV39() {
+  const keyword = normalize($("#supplierSearch")?.value || "");
+  const suppliers = deriveSuppliersV39(state.purchases || [], state.suppliers || []);
+  const rows = suppliers.filter((s) => normalize(Object.values(s).join(" ")).includes(keyword));
+  const top = rows[0];
+  const rising = priceMoversV39(activeRowsV39()).filter((x) => x.diffPercent >= 15).length;
+  const insight = $("#supplierInsightCards");
+  if (insight) {
+    insight.innerHTML = `
+      <article class="mini-card"><span>供應商數</span><strong>${suppliers.length}</strong></article>
+      <article class="mini-card"><span>最大供應商</span><strong>${escapeHtml(top?.["供應商名稱"] || "-")}</strong></article>
+      <article class="mini-card"><span>需關注漲價品項</span><strong>${rising}</strong></article>
+    `;
+  }
+  const body = $("#suppliersBody");
+  if (!body) return;
+  body.innerHTML = rows.length ? rows.map((s) => `
+    <tr>
+      <td>${escapeHtml(s["供應商名稱"] || "")}</td>
+      <td>${escapeHtml(s["聯絡人"] || "")}</td>
+      <td>${escapeHtml(s["電話"] || "")}</td>
+      <td>${escapeHtml(s["主要品項"] || "")}</td>
+      <td class="num">${money(s["本月採購金額"])}</td>
+      <td class="num">${money(s["累計採購金額"])}</td>
+      <td>${escapeHtml(s["最後採購日"] || "")}</td>
+      <td><span class="badge-soft ${s["推薦狀態"] === "推薦" ? "ok" : s["推薦狀態"] === "觀察" ? "warn" : ""}">${escapeHtml(s["推薦狀態"] || "正常")}</span></td>
+    </tr>
+  `).join("") : emptyRow(8, "沒有符合條件的供應商");
+}
+
+function openSupplierFormV39(supplier = {}) {
+  if (!hasPermissionV33("canManageMaterials")) {
+    showMessage("此帳號沒有供應商管理權限。", "error");
+    return;
+  }
+  const form = $("#supplierForm");
+  if (!form) return;
+  form.reset();
+  Object.keys(supplier).forEach((key) => { if (form.elements[key]) form.elements[key].value = supplier[key] || ""; });
+  $("#supplierFormModal")?.classList.remove("hidden");
+}
+function closeSupplierFormV39() { $("#supplierFormModal")?.classList.add("hidden"); }
+async function handleSupplierFormSubmitV39(event) {
+  event.preventDefault();
+  const data = readForm(event.currentTarget);
+  if (!data["供應商名稱"]) { showMessage("供應商名稱不可空白。", "error"); return; }
+  try {
+    showMessage("儲存供應商中...", "success");
+    await apiRequest("upsertSupplier", { supplier: data });
+    closeSupplierFormV39();
+    await loadData();
+    switchTab("suppliers");
+  } catch (error) { showMessage(error.message || "儲存供應商失敗。", "error"); }
+}
+
+function renderItemAdminV39() {
+  const keyword = normalize($("#itemAdminSearch")?.value || "");
+  const rows = (state.materials || []).filter((item) => normalize(Object.values(item).join(" ")).includes(keyword));
+  const movers = priceMoversV39(activeRowsV39());
+  setText("#standardItemCount", unique((state.materials || []).map((m) => m["標準品項名稱"] || m["品項"]).filter(Boolean)).length);
+  setText("#aliasRiskCount", aliasRiskCountV39(state.purchases || []));
+  setText("#risingItemCount", movers.filter((x) => x.diffPercent >= 15).length);
+  const body = $("#itemAdminBody");
+  if (!body) return;
+  body.innerHTML = rows.length ? rows.map((m) => `
+    <tr>
+      <td>${escapeHtml(m["品項"] || "")}</td>
+      <td>${escapeHtml(m["標準品項名稱"] || m["品項"] || "")}</td>
+      <td>${escapeHtml(m["品項別名"] || "")}</td>
+      <td>${escapeHtml(m["分類"] || "")}</td>
+      <td>${escapeHtml(m["預設供應商"] || m["供應商"] || "")}</td>
+      <td>${escapeHtml(m["單位"] || "")}</td>
+      <td class="num">${money(m["最新單價"])}</td>
+      <td>${escapeHtml(m["最近採購日"] || "")}</td>
+      <td>${escapeHtml(m["使用中"] || "是")}</td>
+      <td><button class="text-button material-edit-v39" data-item="${escapeHtml(m["品項"] || "")}" type="button">編輯</button></td>
+    </tr>
+  `).join("") : emptyRow(10, "沒有符合條件的品項");
+}
+
+function aliasRiskCountV39(purchases) {
+  const groups = new Map();
+  activePurchases(purchases || []).forEach((p) => {
+    const std = normalize(p["標準品項名稱"] || p["品項"]);
+    const raw = p["品項"] || "";
+    if (!std || !raw) return;
+    if (!groups.has(std)) groups.set(std, new Set());
+    groups.get(std).add(raw);
+  });
+  return Array.from(groups.values()).filter((set) => set.size >= 2).length;
+}
+
+function openMaterialFormV39(material = {}) {
+  if (!hasPermissionV33("canManageMaterials")) {
+    showMessage("此帳號沒有品項管理權限。", "error");
+    return;
+  }
+  const form = $("#materialForm");
+  if (!form) return;
+  form.reset();
+  Object.keys(material).forEach((key) => { if (form.elements[key]) form.elements[key].value = material[key] || ""; });
+  if (form.elements["分類"] && !form.elements["分類"].value) form.elements["分類"].value = "其他";
+  if (form.elements["單位"] && !form.elements["單位"].value) form.elements["單位"].value = "公斤";
+  if (form.elements["標準單位"] && !form.elements["標準單位"].value) form.elements["標準單位"].value = "公克";
+  $("#materialFormModal")?.classList.remove("hidden");
+}
+function closeMaterialFormV39() { $("#materialFormModal")?.classList.add("hidden"); }
+async function handleMaterialFormSubmitV39(event) {
+  event.preventDefault();
+  const data = readForm(event.currentTarget);
+  if (!data["品項"] || !data["標準品項名稱"]) { showMessage("品項與標準品項名稱不可空白。", "error"); return; }
+  try {
+    showMessage("儲存標準品項中...", "success");
+    await apiRequest("updateMaterial", { material: data });
+    closeMaterialFormV39();
+    await loadData();
+    switchTab("itemAdmin");
+  } catch (error) { showMessage(error.message || "儲存品項失敗。", "error"); }
+}
+
+function renderReportsV39() {
+  const month = $("#reportMonthInput")?.value || monthKey(new Date());
+  const rows = activeRowsV39();
+  const monthRows = rows.filter((r) => monthKey(parseDate(r["日期"])) === month);
+  const prev = new Date(month + "-01");
+  const prevMonth = monthKey(new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  const prevRows = rows.filter((r) => monthKey(parseDate(r["日期"])) === prevMonth);
+  const total = sumAmount(monthRows);
+  const prevTotal = sumAmount(prevRows);
+  const change = prevTotal ? ((total - prevTotal) / prevTotal) * 100 : 0;
+  const catTotals = totalsBy(monthRows, "分類");
+  const supTotals = totalsBy(monthRows, "供應商");
+  const topCat = catTotals[0];
+  setText("#reportTotal", money(total));
+  setText("#reportMonthChange", `較上月 ${formatPercent(change)}`);
+  setText("#reportFoodTotal", money(sumByCategories(monthRows, FOOD_COST_CATEGORIES)));
+  setText("#reportBeverageTotal", money(sumByCategories(monthRows, BEVERAGE_CATEGORIES)));
+  setText("#reportTopCategory", topCat?.name || "-");
+  setText("#reportTopCategoryAmount", money(topCat?.amount || 0));
+  renderBarChart("#reportCategoryChart", catTotals);
+  renderBarChart("#reportSupplierChart", supTotals);
+  const alerts = priceMoversV39(rows).slice(0, 20);
+  const body = $("#reportPriceAlertsBody");
+  if (body) body.innerHTML = alerts.length ? alerts.map((a) => `
+    <tr>
+      <td>${escapeHtml(a.item)}</td>
+      <td>${escapeHtml(a.supplier || "")}</td>
+      <td class="num">${money(a.latestPrice)}</td>
+      <td class="num">${money(a.averagePrice)}</td>
+      <td class="num ${a.diffPercent >= 0 ? "price-up" : "price-down"}">${formatPercent(a.diffPercent)}</td>
+      <td>${escapeHtml(a.diffPercent >= 30 ? "紅色：請確認報價" : a.diffPercent >= 15 ? "黃色：建議追蹤" : a.diffPercent <= -10 ? "比平均便宜" : "正常")}</td>
+    </tr>
+  `).join("") : emptyRow(6, "目前沒有可比較的價格資料");
+}
+
+function priceMoversV39(rows) {
+  const active = activePurchases(rows || []);
+  const groups = new Map();
+  active.forEach((r) => {
+    const item = r["標準品項名稱"] || r["品項"];
+    const price = numberOrZero(r["標準單位價格"] || r["單價"]);
+    if (!item || !price) return;
+    if (!groups.has(item)) groups.set(item, []);
+    groups.get(item).push(r);
+  });
+  const movers = [];
+  groups.forEach((list, item) => {
+    list.sort((a, b) => String(b["日期"] || "").localeCompare(String(a["日期"] || "")));
+    if (list.length < 2) return;
+    const latest = list[0];
+    const latestPrice = numberOrZero(latest["標準單位價格"] || latest["單價"]);
+    const history = list.slice(1).map((x) => numberOrZero(x["標準單位價格"] || x["單價"])).filter(Boolean);
+    if (!history.length) return;
+    const averagePrice = history.reduce((a, b) => a + b, 0) / history.length;
+    const diffPercent = averagePrice ? ((latestPrice - averagePrice) / averagePrice) * 100 : 0;
+    movers.push({ item, supplier: latest["供應商"], latestPrice, averagePrice, diffPercent, date: latest["日期"] });
+  });
+  return movers.sort((a, b) => Math.abs(b.diffPercent) - Math.abs(a.diffPercent));
+}
+
+function exportMonthlyReportV39() {
+  if (!hasPermissionV33("canExportCsv")) { showMessage("此帳號沒有匯出權限。", "error"); return; }
+  const month = $("#reportMonthInput")?.value || monthKey(new Date());
+  const rows = activeRowsV39().filter((r) => monthKey(parseDate(r["日期"])) === month);
+  exportCsv(`okami-monthly-report-${month}.csv`, rows, ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "單價", "金額", "標準單位價格", "建立人姓名"]);
+}
+
+function renderPendingAiV39() {
+  const target = $("#pendingAiList");
+  if (!target) return;
+  const quotes = (state.quotes || []).slice().reverse();
+  const pending = quotes.filter((q) => ["待確認", "辨識完成", "待人工確認", ""].includes(q["AI辨識狀態"] || q["確認狀態"] || "待確認"));
+  const rows = pending.length ? pending : quotes.slice(0, 20);
+  target.innerHTML = rows.length ? rows.map((q) => {
+    const status = q["AI辨識狀態"] || q["確認狀態"] || "待確認";
+    const cls = status === "已確認" ? "ok" : status === "辨識失敗" ? "error" : "warn";
+    return `
+      <article class="quote-card">
+        <div class="quote-card-head">
+          <div class="quote-card-title">
+            <strong>${escapeHtml(q["報價單ID"] || "未命名單據")}</strong>
+            <span class="muted">${escapeHtml(q["檔案名稱"] || "")}</span>
+          </div>
+          <span class="badge-soft ${cls}">${escapeHtml(status)}</span>
+        </div>
+        <div class="quote-card-meta">
+          <span>上傳：${escapeHtml(q["上傳日期"] || "")}</span>
+          <span>上傳人：${escapeHtml(q["上傳人姓名"] || "")}</span>
+          <span>${escapeHtml(q["AI辨識摘要"] || "")}</span>
+        </div>
+        <div class="quote-card-actions" style="margin-top:10px;">
+          ${q["檔案連結"] ? `<a class="text-button" href="${escapeHtml(q["檔案連結"])}" target="_blank" rel="noopener">開啟檔案</a>` : `<span></span>`}
+          ${status === "已確認" ? `<span class="muted">已入帳</span>` : `<button class="primary quote-review-v39" data-quote-id="${escapeHtml(q["報價單ID"] || "")}" type="button">人工確認</button>`}
+        </div>
+      </article>
+    `;
+  }).join("") : `<div class="list empty">目前沒有 AI 待確認單據。</div>`;
+}
+
+function handleV39DocumentClick(event) {
+  const materialButton = event.target.closest?.(".material-edit-v39");
+  if (materialButton) {
+    const itemName = materialButton.dataset.item;
+    const material = (state.materials || []).find((m) => m["品項"] === itemName);
+    openMaterialFormV39(material || {});
+    return;
+  }
+  const reviewButton = event.target.closest?.(".quote-review-v39");
+  if (reviewButton) {
+    openAiReviewModalV39(reviewButton.dataset.quoteId);
+    return;
+  }
+}
+
+function openAiReviewModalV39(quoteId) {
+  const quote = (state.quotes || []).find((q) => q["報價單ID"] === quoteId);
+  if (!quote) { showMessage("找不到此 AI 單據。", "error"); return; }
+  let receipt = null;
+  try { receipt = JSON.parse(quote["AI原始JSON"] || "{}"); } catch (_error) { receipt = null; }
+  if (!receipt || !Array.isArray(receipt.items)) {
+    showMessage("此單據沒有可確認的 AI 明細，請重新上傳或手動建檔。", "error");
+    return;
+  }
+  renderAiReviewContentV39(quote, receipt);
+  $("#aiReviewModal")?.classList.remove("hidden");
+}
+function closeAiReviewModalV39() { $("#aiReviewModal")?.classList.add("hidden"); }
+
+function renderAiReviewContentV39(quote, receipt) {
+  const target = $("#aiReviewContent");
+  if (!target) return;
+  const supplier = receipt.supplier || quote["供應商"] || "待確認供應商";
+  const date = receipt.date || quote["上傳日期"] || new Date().toISOString().slice(0, 10);
+  target.innerHTML = `
+    <p class="muted">報價單ID：${escapeHtml(quote["報價單ID"])}｜供應商：${escapeHtml(supplier)}｜日期：${escapeHtml(date)}</p>
+    <div class="ai-review-grid">
+      ${receipt.items.map((item, idx) => `
+        <div class="ai-review-row" data-index="${idx}">
+          <label>品項<input data-field="品項" value="${escapeHtml(item.name || item["品項"] || "")}" /></label>
+          <label>分類<select data-field="分類">${MATERIAL_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}" ${(item.category || item["分類"] || "其他") === c ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}</select></label>
+          <label>數量<input data-field="數量" type="number" step="0.001" value="${escapeHtml(item.quantity || item["數量"] || "")}" /></label>
+          <label>單位<input data-field="單位" value="${escapeHtml(item.unit || item["單位"] || "")}" /></label>
+          <label>單價<input data-field="單價" type="number" step="0.01" value="${escapeHtml(item.unitPrice || item["單價"] || "")}" /></label>
+          <label>備註<input data-field="備註" value="${escapeHtml(item.needsReview ? "AI待確認" : "AI人工確認")}" /></label>
+        </div>
+      `).join("")}
+    </div>
+    <div class="form-actions" style="margin-top:14px;">
+      <button id="confirmAiQuoteButtonV39" class="primary" type="button">確認並批次寫入</button>
+      <button class="secondary" type="button" onclick="document.querySelector('#aiReviewModal').classList.add('hidden')">取消</button>
+    </div>
+  `;
+  $("#confirmAiQuoteButtonV39")?.addEventListener("click", async () => {
+    const purchases = $$("#aiReviewContent .ai-review-row").map((row) => {
+      const obj = { 日期: date, 供應商: supplier, 報價單ID: quote["報價單ID"], 報價單檔案連結: quote["檔案連結"] || "", AI辨識: "是", AI信心分數: receipt.confidence || "" };
+      row.querySelectorAll("[data-field]").forEach((input) => { obj[input.dataset.field] = input.value; });
+      return obj;
+    });
+    try {
+      showMessage("AI 單據確認寫入中...", "success");
+      await apiRequest("confirmAiQuote", { quoteId: quote["報價單ID"], purchases });
+      closeAiReviewModalV39();
+      await loadData();
+      switchTab("purchases");
+      showMessage(`已確認並寫入 ${purchases.length} 筆採購紀錄。`, "success");
+    } catch (error) { showMessage(error.message || "確認 AI 單據失敗。", "error"); }
+  });
+}
+
+function renderAiResult(receipt) {
+  const target = $("#aiResult");
+  const data = receipt.receipt || receipt;
+  const items = Array.isArray(data.items) ? data.items : [];
+  target.classList.remove("hidden");
+  if (!items.length) {
+    target.innerHTML = `<strong>辨識結果</strong><p class="muted">AI 沒有辨識到可寫入的採購品項，請改用快速建檔。</p>`;
+    return;
+  }
+  target.innerHTML = `
+    <strong>辨識完成：已進入待確認流程</strong>
+    <p class="muted">供應商：${escapeHtml(data.supplier || "待確認")} ｜ 日期：${escapeHtml(data.date || "待確認")} ｜ 報價單ID：${escapeHtml(data.quoteId || "未建立")}</p>
+    <p class="muted">AI 不會直接入帳，請到「AI待確認」頁面人工確認後再批次寫入。</p>
+    <div class="form-actions"><button class="primary" type="button" data-jump="pendingAi">前往 AI 待確認</button></div>
+  `;
+  target.querySelector("[data-jump]")?.addEventListener("click", () => switchTab("pendingAi"));
+  loadData();
+}
