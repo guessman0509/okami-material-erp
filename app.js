@@ -2194,3 +2194,21 @@ function renderAiResult(receipt) {
   target.querySelector("[data-jump]")?.addEventListener("click", () => switchTab("pendingAi"));
   loadData();
 }
+
+/* =============================
+   v3.9.3 Sidebar Final Fix
+   側邊欄只顯示姓名與角色；完整權限只放設定頁，避免左側交疊
+   ============================= */
+function updateUserDisplay() {
+  const user = state.currentUser || {};
+  const name = user.name || user["姓名"] || "-";
+  const role = user.role || user["角色"] || "-";
+  if (typeof setPermissionsV33 === "function") {
+    setPermissionsV33(user, state.permissions || user.permissions || null);
+  }
+  const labels = typeof permissionLabelsV33 === "function" ? permissionLabelsV33().join("、") : "";
+  setText("#currentUserName", name);
+  setText("#currentUserRole", role);
+  setText("#settingsCurrentUser", `${name} ｜ ${role}`);
+  setText("#settingsCurrentPermissions", labels || role);
+}

@@ -629,3 +629,99 @@ button:disabled {
     margin-top: 0;
   }
 }
+
+/* =============================
+   v3.9.3 Sidebar Final Fix
+   強制桌機版左側欄分成：品牌 / 選單可滑動 / 登入卡 / 登出
+   並防止權限文字撐爆交疊
+   ============================= */
+@media (min-width: 821px) {
+  .app-shell {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto auto !important;
+    align-content: stretch !important;
+    gap: 12px !important;
+    padding: 22px 20px !important;
+    box-sizing: border-box !important;
+  }
+
+  .sidebar .brand {
+    grid-row: 1 !important;
+    min-height: 0 !important;
+    flex: none !important;
+  }
+
+  .sidebar .nav {
+    grid-row: 2 !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-content: initial !important;
+    gap: 8px !important;
+    padding-right: 5px !important;
+    margin: 0 -5px 0 0 !important;
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(255,255,255,0.35) transparent !important;
+  }
+
+  .sidebar .nav::-webkit-scrollbar {
+    width: 7px !important;
+  }
+
+  .sidebar .nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.3) !important;
+    border-radius: 999px !important;
+  }
+
+  .sidebar .nav-item {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    min-height: 44px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    box-sizing: border-box !important;
+  }
+
+  .sidebar .user-card {
+    grid-row: 3 !important;
+    flex: none !important;
+    margin: 0 !important;
+    max-height: 82px !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+  }
+
+  .sidebar .user-card span,
+  .sidebar .user-card strong,
+  .sidebar .user-card small,
+  #currentUserName,
+  #currentUserRole {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    display: block !important;
+  }
+
+  .sidebar .logout {
+    grid-row: 4 !important;
+    flex: none !important;
+    width: 100% !important;
+    min-height: 44px !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+}

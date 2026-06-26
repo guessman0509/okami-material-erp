@@ -1,3 +1,5 @@
+Okami ERP v3.9.3 Sidebar Final Fix：修正左側選單交疊、登入卡撐爆與側欄滾動問題。
+
 # 大神燒肉材料管理 ERP v3.9.2 Sidebar Overlap Fix
 
 本版為 v3.9 Mega 的左側選單修正版。
