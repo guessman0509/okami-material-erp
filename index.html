@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <title>公司材料管理 ERP</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="loginView" class="login-shell hidden">
+      <section class="login-card">
+        <div class="brand-mark">ERP</div>
+        <h1 id="loginTitle">公司材料管理 ERP</h1>
+        <p class="muted">請輸入公司內部密碼登入。正式資料只會由後端驗證後讀取，不會保存在前端檔案。</p>
+        <form id="loginForm" class="stack">
+          <label for="passwordInput">登入密碼</label>
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="輸入 ERP 密碼" required />
+          <button class="primary" type="submit">登入系統</button>
+        </form>
+        <p id="loginMessage" class="message"></p>
+        <details class="setup-tip">
+          <summary>第一次使用提醒</summary>
+          <p>請先在 <code>app.js</code> 填入 Apps Script 的 <code>/exec</code> 網址，並在 Apps Script 指令碼屬性設定 <code>ERP_PASSWORD</code>。</p>
+        </details>
+      </section>
+    </div>
+
+    <div id="appView" class="app-shell hidden">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">ERP</div>
+          <div>
+            <h2 id="siteName">公司材料管理</h2>
+            <p id="companyName">Internal System</p>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主要功能">
+          <button class="nav-item active" data-tab="dashboard">Dashboard</button>
+          <button class="nav-item" data-tab="materials">材料主檔</button>
+          <button class="nav-item" data-tab="purchases">採購紀錄</button>
+          <button class="nav-item" data-tab="analysis">支出分析</button>
+          <button class="nav-item" data-tab="quickAdd">快速建檔</button>
+          <button class="nav-item" data-tab="aiReceipt">拍照建檔</button>
+          <button class="nav-item" data-tab="settings">設定</button>
+        </nav>
+
+        <button id="logoutButton" class="ghost logout">登出</button>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Material ERP</p>
+            <h1 id="pageTitle">Dashboard</h1>
+          </div>
+          <div class="top-actions">
+            <button id="refreshButton" class="secondary">重新讀取</button>
+          </div>
+        </header>
+
+        <section id="setupWarning" class="alert warning hidden">
+          尚未設定 Apps Script 網址。請開啟 <code>app.js</code>，填入 <code>APPS_SCRIPT_URL</code>。
+        </section>
+
+        <section id="globalMessage" class="message-area hidden"></section>
+
+        <section id="dashboard" class="tab-panel active">
+          <div class="cards">
+            <article class="metric-card">
+              <span>本月採購</span>
+              <strong id="metricThisMonth">$0</strong>
+              <small id="metricMonthChange">較上月 0%</small>
+            </article>
+            <article class="metric-card">
+              <span>本月最大供應商</span>
+              <strong id="metricTopSupplier">-</strong>
+              <small id="metricTopSupplierAmount">$0</small>
+            </article>
+            <article class="metric-card">
+              <span>本月最大分類</span>
+              <strong id="metricTopCategory">-</strong>
+              <small id="metricTopCategoryAmount">$0</small>
+            </article>
+            <article class="metric-card">
+              <span>材料品項</span>
+              <strong id="metricMaterialCount">0</strong>
+              <small>使用中材料主檔</small>
+            </article>
+          </div>
+
+          <div class="grid two">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>最近採購</h2>
+                <button class="text-button" data-jump="purchases">查看全部</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>日期</th><th>供應商</th><th>品項</th><th class="num">金額</th></tr>
+                  </thead>
+                  <tbody id="recentPurchasesBody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>價格提醒</h2>
+              </div>
+              <div id="priceAlerts" class="list empty">目前沒有價格異常提醒。</div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>最便宜供應商提示</h2>
+              <span class="muted">以標準單位價格計算</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>品項</th><th>最低價供應商</th><th class="num">最低標準單價</th><th>最近採購日</th></tr>
+                </thead>
+                <tbody id="cheapestBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="materials" class="tab-panel">
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>材料主檔</h2>
+                <p class="muted">搜尋品項、分類、供應商或規格。</p>
+              </div>
+              <input id="materialSearch" type="search" placeholder="搜尋材料..." />
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ERP代碼</th><th>品項</th><th>分類</th><th>規格</th><th>單位</th><th class="num">最新單價</th><th>供應商</th><th>最近採購日</th><th>使用中</th>
+                  </tr>
+                </thead>
+                <tbody id="materialsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="purchases" class="tab-panel">
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>採購紀錄</h2>
+                <p class="muted">依日期、供應商、品項查詢歷史採購資料。</p>
+              </div>
+              <input id="purchaseSearch" type="search" placeholder="搜尋採購..." />
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>採購ID</th><th>日期</th><th>供應商</th><th>品項</th><th>分類</th><th>規格</th><th class="num">數量</th><th>單位</th><th class="num">單價</th><th class="num">金額</th>
+                  </tr>
+                </thead>
+                <tbody id="purchasesBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="analysis" class="tab-panel">
+          <div class="grid two">
+            <section class="panel">
+              <h2>供應商支出排行</h2>
+              <div id="supplierChart" class="bar-chart"></div>
+            </section>
+            <section class="panel">
+              <h2>分類支出排行</h2>
+              <div id="categoryChart" class="bar-chart"></div>
+            </section>
+          </div>
+          <section class="panel">
+            <div class="panel-head split">
+              <div>
+                <h2>同品項歷史價格比較</h2>
+                <p class="muted">選擇品項後查看不同供應商的標準單位價格。</p>
+              </div>
+              <select id="priceItemSelect"></select>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>日期</th><th>供應商</th><th>品項</th><th>規格</th><th class="num">標準單價</th><th class="num">原始金額</th></tr>
+                </thead>
+                <tbody id="priceHistoryBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section id="quickAdd" class="tab-panel">
+          <section class="panel form-panel">
+            <h2>快速新增採購紀錄</h2>
+            <form id="purchaseForm" class="form-grid">
+              <label>日期<input name="日期" type="date" required /></label>
+              <label>供應商<input name="供應商" type="text" placeholder="例：測試供應商" required /></label>
+              <label>品項<input name="品項" type="text" placeholder="例：牛五花" required /></label>
+              <label>標準品項名稱<input name="標準品項名稱" type="text" placeholder="未填則同品項" /></label>
+              <label>分類<select name="分類" id="categorySelect"></select></label>
+              <label>規格<input name="規格" type="text" placeholder="例：1公斤/包" /></label>
+              <label>數量<input name="數量" type="number" min="0" step="0.001" required /></label>
+              <label>單位<select name="單位" id="unitSelect"></select></label>
+              <label>換算倍率<input name="換算倍率" type="number" min="0" step="0.001" placeholder="例：1000" /></label>
+              <label>標準單位<select name="標準單位" id="standardUnitSelect"></select></label>
+              <label>單價<input name="單價" type="number" min="0" step="0.01" required /></label>
+              <label class="span-2">備註<input name="備註" type="text" placeholder="可填單據編號、異常說明等" /></label>
+              <div class="form-actions span-2">
+                <button class="primary" type="submit">新增採購紀錄</button>
+                <button class="secondary" type="reset">清空</button>
+              </div>
+            </form>
+          </section>
+        </section>
+
+        <section id="aiReceipt" class="tab-panel">
+          <section class="panel form-panel">
+            <h2>AI 拍照辨識單據</h2>
+            <p class="muted">AI 只負責辨識與整理，必須人工確認後才會正式寫入採購紀錄。</p>
+            <div class="upload-box">
+              <input id="receiptFile" type="file" accept="image/*,application/pdf" />
+              <button id="analyzeReceiptButton" class="primary" type="button">辨識單據</button>
+            </div>
+            <div id="receiptPreview" class="receipt-preview hidden"></div>
+            <div id="aiResult" class="ai-result hidden"></div>
+          </section>
+        </section>
+
+        <section id="settings" class="tab-panel">
+          <section class="panel">
+            <h2>系統設定</h2>
+            <div class="settings-list">
+              <div>
+                <strong>Apps Script URL</strong>
+                <code id="appsScriptUrlText"></code>
+              </div>
+              <div>
+                <strong>資料來源</strong>
+                <span>私人 Google Sheet，由 Apps Script 後端驗證讀寫。</span>
+              </div>
+              <div>
+                <strong>前端資料安全</strong>
+                <span><code>data.js</code> 保持空白，不保存正式公司資料。</span>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
