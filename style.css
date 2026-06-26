@@ -331,3 +331,27 @@ td { font-size: 14px; }
 .icon-button { width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: #fff8ef; color: var(--ink); font-size: 24px; line-height: 1; padding: 0; }
 button.danger { background: var(--danger); color: white; }
 textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; font: inherit; background: #fffdf8; color: var(--ink); }
+
+/* v3.3 權限控管 */
+button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.permission-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.permission-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff8ea;
+  color: #5e4630;
+  font-weight: 800;
+  padding: 4px 9px;
+  font-size: 12px;
+}

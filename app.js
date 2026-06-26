@@ -9,7 +9,7 @@
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAl5Yt7SD3Eq06zAkSyhDuEYJYC-SHZq3TGfqcIsxeUVhyChDfTCOnk5sWHPSOUxG4/exec"; // 若重新部署 Apps Script，請更新這裡的 /exec 網址
 
 const BRAND = {
-  siteName: "大神材料 ERP v3.2",
+  siteName: "大神材料 ERP v3.3",
   companyName: "大神燒肉 Okami Yakiniku",
   loginTitle: "大神燒肉 材料管理 ERP"
 };
@@ -1149,4 +1149,433 @@ function bindExportButtons() {
   const materialButton = $("#exportMaterialsButton");
   if (purchaseButton) purchaseButton.addEventListener("click", () => exportCsv(`purchases-${new Date().toISOString().slice(0, 10)}.csv`, state.purchases, ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "單價", "金額", "標準單位價格", "狀態", "作廢原因", "作廢人ID", "作廢人姓名", "作廢時間", "報價單ID", "報價單檔案連結", "AI辨識", "AI信心分數", "備註", "建立人ID", "建立人姓名", "最後修改人ID", "最後修改人姓名"]));
   if (materialButton) materialButton.addEventListener("click", () => exportCsv(`materials-${new Date().toISOString().slice(0, 10)}.csv`, state.materials, ["ERP代碼", "品項", "標準品項名稱", "分類", "規格", "單位", "最新單價", "標準單位價格", "供應商", "最近採購日", "使用中", "備註"]));
+}
+
+
+/* =============================
+   v3.3 員工權限控管
+   ============================= */
+
+const FRONTEND_ROLE_POLICIES_V33 = {
+  "老闆": {
+    canViewDashboard: true,
+    canViewMaterials: true,
+    canViewPurchases: true,
+    canViewAnalysis: true,
+    canAddPurchase: true,
+    canEditAllPurchases: true,
+    canEditOwnPurchases: true,
+    canVoidPurchases: true,
+    canUseAiReceipt: true,
+    canManageMaterials: true,
+    canExportCsv: true
+  },
+  "管理員": {
+    canViewDashboard: true,
+    canViewMaterials: true,
+    canViewPurchases: true,
+    canViewAnalysis: true,
+    canAddPurchase: true,
+    canEditAllPurchases: true,
+    canEditOwnPurchases: true,
+    canVoidPurchases: true,
+    canUseAiReceipt: true,
+    canManageMaterials: true,
+    canExportCsv: true
+  },
+  "採購": {
+    canViewDashboard: true,
+    canViewMaterials: true,
+    canViewPurchases: true,
+    canViewAnalysis: true,
+    canAddPurchase: true,
+    canEditAllPurchases: false,
+    canEditOwnPurchases: true,
+    canVoidPurchases: false,
+    canUseAiReceipt: true,
+    canManageMaterials: false,
+    canExportCsv: true
+  },
+  "員工": {
+    canViewDashboard: true,
+    canViewMaterials: true,
+    canViewPurchases: true,
+    canViewAnalysis: false,
+    canAddPurchase: true,
+    canEditAllPurchases: false,
+    canEditOwnPurchases: false,
+    canVoidPurchases: false,
+    canUseAiReceipt: false,
+    canManageMaterials: false,
+    canExportCsv: false
+  },
+  "唯讀": {
+    canViewDashboard: true,
+    canViewMaterials: true,
+    canViewPurchases: true,
+    canViewAnalysis: true,
+    canAddPurchase: false,
+    canEditAllPurchases: false,
+    canEditOwnPurchases: false,
+    canVoidPurchases: false,
+    canUseAiReceipt: false,
+    canManageMaterials: false,
+    canExportCsv: true
+  }
+};
+
+function fallbackPermissionsV33(user = state.currentUser || {}) {
+  const role = user.role || user["角色"] || "員工";
+  return Object.assign({}, FRONTEND_ROLE_POLICIES_V33[role] || FRONTEND_ROLE_POLICIES_V33["員工"]);
+}
+
+function setPermissionsV33(user, permissions) {
+  state.permissions = Object.assign({}, fallbackPermissionsV33(user), permissions || user?.permissions || {});
+}
+
+function hasPermissionV33(key) {
+  if (!state.permissions) setPermissionsV33(state.currentUser || {}, null);
+  return !!state.permissions[key];
+}
+
+function permissionLabelsV33() {
+  const items = [];
+  if (hasPermissionV33("canAddPurchase")) items.push("新增採購");
+  if (hasPermissionV33("canEditAllPurchases")) items.push("編輯全部");
+  else if (hasPermissionV33("canEditOwnPurchases")) items.push("編輯自己建立");
+  if (hasPermissionV33("canVoidPurchases")) items.push("作廢採購");
+  if (hasPermissionV33("canUseAiReceipt")) items.push("AI辨識");
+  if (hasPermissionV33("canManageMaterials")) items.push("材料管理");
+  if (hasPermissionV33("canExportCsv")) items.push("匯出CSV");
+  return items.length ? items : ["唯讀瀏覽"];
+}
+
+function isOwnPurchaseV33(row) {
+  const user = state.currentUser || {};
+  const userId = String(user.id || user["員工ID"] || "").trim();
+  const userName = String(user.name || user["姓名"] || "").trim();
+  const creatorId = String(row?.["建立人ID"] || "").trim();
+  const creatorName = String(row?.["建立人姓名"] || row?.["建立人"] || "").trim();
+  return (!!userId && userId === creatorId) || (!!userName && userName === creatorName);
+}
+
+function canEditPurchaseV33(row) {
+  if (isVoidedPurchase(row)) return false;
+  if (hasPermissionV33("canEditAllPurchases")) return true;
+  return hasPermissionV33("canEditOwnPurchases") && isOwnPurchaseV33(row);
+}
+
+function canVoidPurchaseV33(row) {
+  if (isVoidedPurchase(row)) return false;
+  return hasPermissionV33("canVoidPurchases");
+}
+
+function updatePermissionUiV33() {
+  setPermissionsV33(state.currentUser || {}, state.permissions || null);
+
+  const quickAddNav = $('.nav-item[data-tab="quickAdd"]');
+  if (quickAddNav) quickAddNav.classList.toggle("hidden", !hasPermissionV33("canAddPurchase"));
+
+  const aiNav = $('.nav-item[data-tab="aiReceipt"]');
+  if (aiNav) aiNav.classList.toggle("hidden", !hasPermissionV33("canUseAiReceipt"));
+
+  const analysisNav = $('.nav-item[data-tab="analysis"]');
+  if (analysisNav) analysisNav.classList.toggle("hidden", !hasPermissionV33("canViewAnalysis"));
+
+  const addButton = $('#purchaseForm button[type="submit"]');
+  if (addButton) {
+    addButton.disabled = !hasPermissionV33("canAddPurchase");
+    addButton.textContent = hasPermissionV33("canAddPurchase") ? "新增採購紀錄" : "此帳號無新增權限";
+  }
+
+  const analyzeButton = $('#analyzeReceiptButton');
+  if (analyzeButton) {
+    analyzeButton.disabled = !hasPermissionV33("canUseAiReceipt");
+    analyzeButton.textContent = hasPermissionV33("canUseAiReceipt") ? "上傳並辨識" : "此帳號無 AI 辨識權限";
+  }
+
+  const exportButtons = ['#exportPurchasesButton', '#exportMaterialsButton'];
+  exportButtons.forEach((selector) => {
+    const button = $(selector);
+    if (button) button.disabled = !hasPermissionV33("canExportCsv");
+  });
+
+  if (state.activeTab === "quickAdd" && !hasPermissionV33("canAddPurchase")) switchTab("dashboard");
+  if (state.activeTab === "aiReceipt" && !hasPermissionV33("canUseAiReceipt")) switchTab("dashboard");
+  if (state.activeTab === "analysis" && !hasPermissionV33("canViewAnalysis")) switchTab("dashboard");
+}
+
+function updateUserDisplay() {
+  const user = state.currentUser || {};
+  const name = user.name || user["姓名"] || "-";
+  const role = user.role || user["角色"] || "-";
+  setPermissionsV33(user, state.permissions || user.permissions || null);
+  const labels = permissionLabelsV33().join("、");
+  setText("#currentUserName", name);
+  setText("#currentUserRole", `${role}｜${labels}`);
+  setText("#settingsCurrentUser", `${name} ｜ ${role}`);
+  setText("#settingsPermissionList", labels);
+  updatePermissionUiV33();
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const account = $("#accountInput").value.trim();
+  const password = $("#passwordInput").value.trim();
+  if (!account) {
+    $("#loginMessage").textContent = "請輸入員工帳號。";
+    return;
+  }
+  if (!APPS_SCRIPT_URL) {
+    $("#loginMessage").textContent = "尚未設定 Apps Script URL。";
+    return;
+  }
+
+  try {
+    $("#loginMessage").textContent = "登入中...";
+    const result = await apiRequest("login", { account, password }, false);
+    state.token = result.token;
+    state.currentUser = result.user || null;
+    setPermissionsV33(state.currentUser || {}, result.permissions || state.currentUser?.permissions || null);
+    sessionStorage.setItem("erpSessionToken", state.token);
+    sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
+    sessionStorage.setItem("erpPermissions", JSON.stringify(state.permissions || {}));
+    $("#passwordInput").value = "";
+    showApp();
+    await loadData();
+  } catch (error) {
+    $("#loginMessage").textContent = error.message || "登入失敗。";
+  }
+}
+
+async function verifySession() {
+  try {
+    const result = await apiRequest("verifySession", {});
+    if (result.user) {
+      state.currentUser = result.user;
+      sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
+    }
+    setPermissionsV33(state.currentUser || {}, result.permissions || state.currentUser?.permissions || null);
+    sessionStorage.setItem("erpPermissions", JSON.stringify(state.permissions || {}));
+    showApp();
+    await loadData();
+  } catch (_error) {
+    clearSession();
+    showLogin();
+  }
+}
+
+function clearSession() {
+  state.token = "";
+  state.currentUser = null;
+  state.permissions = {};
+  sessionStorage.removeItem("erpSessionToken");
+  sessionStorage.removeItem("erpCurrentUser");
+  sessionStorage.removeItem("erpPermissions");
+}
+
+function readStoredUser() {
+  try {
+    const rawUser = sessionStorage.getItem("erpCurrentUser");
+    return rawUser ? JSON.parse(rawUser) : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function loadData() {
+  try {
+    showMessage("資料讀取中...", "success");
+    const result = await apiRequest("getBootstrapData", {});
+    state.materials = Array.isArray(result.materials) ? result.materials : [];
+    state.purchases = Array.isArray(result.purchases) ? result.purchases : [];
+    state.dashboard = result.dashboard || buildDashboardLocally(state.materials, state.purchases);
+    if (result.currentUser) {
+      state.currentUser = result.currentUser;
+      sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
+    }
+    setPermissionsV33(state.currentUser || {}, result.permissions || state.currentUser?.permissions || null);
+    sessionStorage.setItem("erpPermissions", JSON.stringify(state.permissions || {}));
+    updateUserDisplay();
+    renderAll();
+    updateDatalists();
+    updatePurchasePreview();
+    hideMessage();
+  } catch (error) {
+    showMessage(error.message || "資料讀取失敗。", "error");
+  }
+}
+
+async function handleAddPurchase(event) {
+  event.preventDefault();
+  if (!hasPermissionV33("canAddPurchase")) {
+    showMessage("此帳號沒有新增採購紀錄權限。", "error");
+    return;
+  }
+  const form = event.currentTarget;
+  const formData = readForm(form);
+  const validation = validatePurchaseInput(formData);
+  if (!validation.ok) {
+    showMessage(validation.message, "error");
+    return;
+  }
+
+  try {
+    showMessage("新增採購紀錄中...", "success");
+    const result = await apiRequest("addPurchase", { purchase: formData, user: state.currentUser || {} });
+    showMessage(`已新增採購紀錄：${result.purchaseId || "完成"}`, "success");
+    if (form) form.reset();
+    setTodayDefault();
+    updatePurchasePreview();
+    await loadData();
+    switchTab("purchases");
+  } catch (error) {
+    showMessage(error.message || "新增失敗。", "error");
+  }
+}
+
+async function handleAnalyzeReceipt() {
+  if (!hasPermissionV33("canUseAiReceipt")) {
+    showMessage("此帳號沒有 AI 單據辨識權限。", "error");
+    return;
+  }
+  const fileInput = $("#receiptFile");
+  const file = fileInput.files?.[0];
+  if (!file) {
+    showMessage("請先選擇單據照片或 PDF。", "error");
+    return;
+  }
+
+  try {
+    showMessage("AI 辨識中，請稍候...", "success");
+    const filePayload = await readFileAsBase64(file);
+    const result = await apiRequest("analyzeQuoteImage", {
+      file: {
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        data: filePayload.base64
+      }
+    });
+    renderAiResult(result.receipt || result);
+    hideMessage();
+  } catch (error) {
+    showMessage(error.message || "AI 辨識失敗。", "error");
+  }
+}
+
+function renderPurchases() {
+  const keyword = normalize($("#purchaseSearch").value);
+  const rows = state.purchases.filter((item) => normalize(Object.values(item).join(" ")).includes(keyword)).reverse();
+  $("#purchasesBody").innerHTML = rows.length ? rows.map((item) => {
+    const status = item["狀態"] || "正常";
+    const isVoided = status === "已作廢";
+    const editAllowed = canEditPurchaseV33(item);
+    const voidAllowed = canVoidPurchaseV33(item);
+    const actionHtml = isVoided
+      ? `<span class="muted">已作廢</span>`
+      : [
+          editAllowed ? `<button class="text-button purchase-edit" data-purchase-id="${escapeHtml(item["採購ID"] || "")}" type="button">編輯</button>` : "",
+          voidAllowed ? `<button class="text-button danger-text purchase-void" data-purchase-id="${escapeHtml(item["採購ID"] || "")}" type="button">作廢</button>` : ""
+        ].filter(Boolean).join(" ") || `<span class="muted">無操作權限</span>`;
+
+    return `
+      <tr class="${isVoided ? "voided-row" : ""}">
+        <td>${escapeHtml(item["採購ID"] || "")}</td>
+        <td>${escapeHtml(item["日期"] || "")}</td>
+        <td>${escapeHtml(item["供應商"] || "")}</td>
+        <td>${escapeHtml(item["品項"] || "")}</td>
+        <td>${escapeHtml(item["分類"] || "")}</td>
+        <td>${escapeHtml(item["規格"] || "")}</td>
+        <td class="num">${formatNumber(item["數量"])}</td>
+        <td>${escapeHtml(item["單位"] || "")}</td>
+        <td class="num">${money(item["單價"])}</td>
+        <td class="num">${money(item["金額"])}</td>
+        <td><span class="status-badge ${isVoided ? "voided" : "normal"}">${escapeHtml(status)}</span></td>
+        <td>${escapeHtml(item["建立人姓名"] || item["建立人"] || "")}</td>
+        <td class="actions-cell">${actionHtml}</td>
+      </tr>
+    `;
+  }).join("") : emptyRow(13, "尚無採購紀錄");
+}
+
+function openEditPurchaseModal(purchaseId) {
+  const purchase = findPurchaseById(purchaseId);
+  if (!purchase) {
+    showMessage("找不到這筆採購紀錄。", "error");
+    return;
+  }
+  if (!canEditPurchaseV33(purchase)) {
+    showMessage("此帳號沒有編輯這筆採購紀錄的權限。", "error");
+    return;
+  }
+  const form = $("#editPurchaseForm");
+  if (!form) return;
+  ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "換算倍率", "標準數量", "標準單位", "單價", "備註"].forEach((key) => {
+    if (form.elements[key]) form.elements[key].value = purchase[key] || "";
+  });
+  if (form.elements["分類"] && !form.elements["分類"].value) form.elements["分類"].value = "其他";
+  if (form.elements["單位"] && !form.elements["單位"].value) form.elements["單位"].value = "公斤";
+  if (form.elements["標準單位"] && !form.elements["標準單位"].value) form.elements["標準單位"].value = "公克";
+  updateEditPurchasePreview();
+  $("#editPurchaseModal").classList.remove("hidden");
+}
+
+function openVoidPurchaseModal(purchaseId) {
+  const purchase = findPurchaseById(purchaseId);
+  if (!purchase) {
+    showMessage("找不到這筆採購紀錄。", "error");
+    return;
+  }
+  if (!canVoidPurchaseV33(purchase)) {
+    showMessage("此帳號沒有作廢採購紀錄的權限。", "error");
+    return;
+  }
+  const form = $("#voidPurchaseForm");
+  if (!form) return;
+  form.reset();
+  form.elements["採購ID"].value = purchaseId;
+  setText("#voidPurchaseSummary", `準備作廢：${purchaseId}｜${purchase["供應商"] || ""}｜${purchase["品項"] || ""}｜${money(purchase["金額"])}`);
+  $("#voidPurchaseModal").classList.remove("hidden");
+}
+
+function bindExportButtons() {
+  const purchaseButton = $("#exportPurchasesButton");
+  const materialButton = $("#exportMaterialsButton");
+  if (purchaseButton) purchaseButton.addEventListener("click", () => {
+    if (!hasPermissionV33("canExportCsv")) {
+      showMessage("此帳號沒有匯出 CSV 權限。", "error");
+      return;
+    }
+    exportCsv(`purchases-${new Date().toISOString().slice(0, 10)}.csv`, state.purchases, ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "單價", "金額", "標準單位價格", "狀態", "作廢原因", "作廢人ID", "作廢人姓名", "作廢時間", "報價單ID", "報價單檔案連結", "AI辨識", "AI信心分數", "備註", "建立人ID", "建立人姓名", "最後修改人ID", "最後修改人姓名"]);
+  });
+  if (materialButton) materialButton.addEventListener("click", () => {
+    if (!hasPermissionV33("canExportCsv")) {
+      showMessage("此帳號沒有匯出 CSV 權限。", "error");
+      return;
+    }
+    exportCsv(`materials-${new Date().toISOString().slice(0, 10)}.csv`, state.materials, ["ERP代碼", "品項", "標準品項名稱", "分類", "規格", "單位", "最新單價", "標準單位價格", "供應商", "最近採購日", "使用中", "備註"]);
+  });
+}
+
+
+function init() {
+  applyBrand();
+  initOptions();
+  bindEvents();
+  setTodayDefault();
+  try {
+    const rawPerm = sessionStorage.getItem("erpPermissions");
+    state.permissions = rawPerm ? JSON.parse(rawPerm) || {} : {};
+  } catch (_error) {
+    state.permissions = {};
+  }
+
+  $("#appsScriptUrlText").textContent = APPS_SCRIPT_URL || "尚未設定";
+  if (!APPS_SCRIPT_URL) $("#setupWarning")?.classList.remove("hidden");
+
+  if (state.token && APPS_SCRIPT_URL) {
+    verifySession();
+  } else {
+    showLogin();
+  }
 }
