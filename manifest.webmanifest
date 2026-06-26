@@ -1,0 +1,10 @@
+{
+  "name": "大神燒肉材料管理 ERP",
+  "short_name": "大神材料ERP",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f3ef",
+  "theme_color": "#8f1f1f",
+  "description": "大神燒肉 Okami Yakiniku 材料採購與成本管理系統"
+}

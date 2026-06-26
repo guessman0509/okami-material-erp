@@ -9,7 +9,7 @@
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAl5Yt7SD3Eq06zAkSyhDuEYJYC-SHZq3TGfqcIsxeUVhyChDfTCOnk5sWHPSOUxG4/exec"; // 若重新部署 Apps Script，請更新這裡的 /exec 網址
 
 const BRAND = {
-  siteName: "大神材料 ERP v3.3",
+  siteName: "大神材料 ERP v3.4",
   companyName: "大神燒肉 Okami Yakiniku",
   loginTitle: "大神燒肉 材料管理 ERP"
 };
@@ -1579,3 +1579,174 @@ function init() {
     showLogin();
   }
 }
+
+
+/* =============================
+   v3.4 手機快速 Key-in 與卡片式紀錄
+   ============================= */
+
+const MOBILE_COMMON_ITEMS_V34 = ["牛五花", "牛肋條", "雞腿肉", "豬五花", "牛大腸", "生啤", "可爾必思", "垃圾袋"];
+const MOBILE_COMMON_SUPPLIERS_V34 = ["肉品商", "蔬菜商", "酒商", "包材商"];
+
+function isMobileLayoutV34() {
+  return window.matchMedia && window.matchMedia("(max-width: 820px)").matches;
+}
+
+function topValuesV34(rows, field, limit = 8, fallback = []) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const value = String(row?.[field] || "").trim();
+    if (!value) return;
+    map.set(value, (map.get(value) || 0) + 1);
+  });
+  const values = Array.from(map.entries()).sort((a, b) => b[1] - a[1]).map(([value]) => value);
+  return unique(values.concat(fallback)).slice(0, limit);
+}
+
+function renderMobileQuickToolsV34() {
+  const supplierTarget = $("#mobileSupplierChips");
+  const itemTarget = $("#mobileItemChips");
+  if (!supplierTarget || !itemTarget) return;
+
+  const suppliers = topValuesV34(state.purchases, "供應商", 8, MOBILE_COMMON_SUPPLIERS_V34);
+  const materialItems = state.materials.map((item) => item["品項"] || item["標準品項名稱"]).filter(Boolean);
+  const purchaseItems = state.purchases.map((item) => item["品項"] || item["標準品項名稱"]).filter(Boolean);
+  const itemRows = materialItems.concat(purchaseItems).map((品項) => ({ 品項 }));
+  const items = topValuesV34(itemRows, "品項", 10, MOBILE_COMMON_ITEMS_V34);
+
+  supplierTarget.innerHTML = suppliers.length
+    ? suppliers.map((name) => `<button class="quick-chip mobile-supplier-chip" type="button" data-value="${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("")
+    : `<span class="muted">尚無供應商資料</span>`;
+  itemTarget.innerHTML = items.length
+    ? items.map((name) => `<button class="quick-chip mobile-item-chip" type="button" data-value="${escapeHtml(name)}">${escapeHtml(name)}</button>`).join("")
+    : `<span class="muted">尚無品項資料</span>`;
+}
+
+function setQuickAddFieldV34(fieldName, value) {
+  const form = $("#purchaseForm");
+  if (!form || !form.elements[fieldName]) return;
+  form.elements[fieldName].value = value;
+  if (fieldName === "品項") autoFillFromMaterial();
+  updatePurchasePreview();
+}
+
+function renderPurchaseCardsV34(rows) {
+  const target = $("#purchaseCards");
+  if (!target) return;
+  target.innerHTML = rows.length ? rows.map((item) => {
+    const status = item["狀態"] || "正常";
+    const isVoided = status === "已作廢";
+    const editAllowed = canEditPurchaseV33(item);
+    const voidAllowed = canVoidPurchaseV33(item);
+    const purchaseId = escapeHtml(item["採購ID"] || "");
+    const actions = isVoided
+      ? `<span class="muted">已作廢</span>`
+      : [
+          editAllowed ? `<button class="secondary purchase-edit" data-purchase-id="${purchaseId}" type="button">編輯</button>` : "",
+          voidAllowed ? `<button class="danger purchase-void" data-purchase-id="${purchaseId}" type="button">作廢</button>` : ""
+        ].filter(Boolean).join("") || `<span class="muted">無操作權限</span>`;
+    return `
+      <article class="purchase-mobile-card ${isVoided ? "voided" : ""}">
+        <div class="purchase-mobile-head">
+          <div>
+            <strong>${escapeHtml(item["品項"] || "未命名品項")}</strong>
+            <span>${escapeHtml(item["供應商"] || "")}</span>
+          </div>
+          <span class="status-badge ${isVoided ? "voided" : "normal"}">${escapeHtml(status)}</span>
+        </div>
+        <div class="purchase-mobile-main">
+          <span>${escapeHtml(item["日期"] || "")}</span>
+          <span>${formatNumber(item["數量"])} ${escapeHtml(item["單位"] || "")}</span>
+          <span>${money(item["單價"])}</span>
+        </div>
+        <div class="purchase-mobile-total">
+          <span>總額</span>
+          <strong>${money(item["金額"])}</strong>
+        </div>
+        <div class="purchase-mobile-meta">建立人：${escapeHtml(item["建立人姓名"] || item["建立人"] || "-")}</div>
+        <div class="purchase-mobile-actions">${actions}</div>
+      </article>
+    `;
+  }).join("") : `<div class="list empty">尚無採購紀錄</div>`;
+}
+
+function renderPurchases() {
+  const keyword = normalize($("#purchaseSearch").value);
+  const rows = state.purchases.filter((item) => normalize(Object.values(item).join(" ")).includes(keyword)).reverse();
+  $("#purchasesBody").innerHTML = rows.length ? rows.map((item) => {
+    const status = item["狀態"] || "正常";
+    const isVoided = status === "已作廢";
+    const editAllowed = canEditPurchaseV33(item);
+    const voidAllowed = canVoidPurchaseV33(item);
+    const actionHtml = isVoided
+      ? `<span class="muted">已作廢</span>`
+      : [
+          editAllowed ? `<button class="text-button purchase-edit" data-purchase-id="${escapeHtml(item["採購ID"] || "")}" type="button">編輯</button>` : "",
+          voidAllowed ? `<button class="text-button danger-text purchase-void" data-purchase-id="${escapeHtml(item["採購ID"] || "")}" type="button">作廢</button>` : ""
+        ].filter(Boolean).join(" ") || `<span class="muted">無操作權限</span>`;
+
+    return `
+      <tr class="${isVoided ? "voided-row" : ""}">
+        <td>${escapeHtml(item["採購ID"] || "")}</td>
+        <td>${escapeHtml(item["日期"] || "")}</td>
+        <td>${escapeHtml(item["供應商"] || "")}</td>
+        <td>${escapeHtml(item["品項"] || "")}</td>
+        <td>${escapeHtml(item["分類"] || "")}</td>
+        <td>${escapeHtml(item["規格"] || "")}</td>
+        <td class="num">${formatNumber(item["數量"])}</td>
+        <td>${escapeHtml(item["單位"] || "")}</td>
+        <td class="num">${money(item["單價"])}</td>
+        <td class="num">${money(item["金額"])}</td>
+        <td><span class="status-badge ${isVoided ? "voided" : "normal"}">${escapeHtml(status)}</span></td>
+        <td>${escapeHtml(item["建立人姓名"] || item["建立人"] || "")}</td>
+        <td class="actions-cell">${actionHtml}</td>
+      </tr>
+    `;
+  }).join("") : emptyRow(13, "尚無採購紀錄");
+  renderPurchaseCardsV34(rows);
+}
+
+function updateDatalists() {
+  fillDatalist("#supplierDatalist", unique(state.purchases.map((item) => item["供應商"]).concat(state.materials.map((item) => item["供應商"]))).filter(Boolean).sort());
+  fillDatalist("#itemDatalist", unique(state.materials.map((item) => item["品項"]).concat(state.purchases.map((item) => item["品項"]))).filter(Boolean).sort());
+  renderMobileQuickToolsV34();
+}
+
+function handlePurchaseActionClick(event) {
+  const supplierChip = event.target.closest?.(".mobile-supplier-chip");
+  const itemChip = event.target.closest?.(".mobile-item-chip");
+  const todayButton = event.target.closest?.(".quick-fill-today");
+  if (supplierChip) {
+    setQuickAddFieldV34("供應商", supplierChip.dataset.value || supplierChip.textContent.trim());
+    $("#purchaseForm")?.elements["品項"]?.focus();
+    return;
+  }
+  if (itemChip) {
+    setQuickAddFieldV34("品項", itemChip.dataset.value || itemChip.textContent.trim());
+    $("#purchaseForm")?.elements["數量"]?.focus();
+    return;
+  }
+  if (todayButton) {
+    setTodayDefault();
+    showMessage("日期已帶入今天。", "success");
+    return;
+  }
+
+  const editButton = event.target.closest?.(".purchase-edit");
+  const voidButton = event.target.closest?.(".purchase-void");
+  if (editButton) openEditPurchaseModal(editButton.dataset.purchaseId);
+  if (voidButton) openVoidPurchaseModal(voidButton.dataset.purchaseId);
+}
+
+function showApp() {
+  $("#loginView").classList.add("hidden");
+  $("#appView").classList.remove("hidden");
+  updateUserDisplay();
+  if (isMobileLayoutV34() && state.activeTab === "dashboard" && hasPermissionV33("canAddPurchase")) {
+    switchTab("quickAdd");
+  }
+}
+
+window.addEventListener("resize", () => {
+  if (state.purchases) renderPurchaseCardsV34(state.purchases.filter((item) => normalize(Object.values(item).join(" ")).includes(normalize($("#purchaseSearch")?.value || ""))).reverse());
+});

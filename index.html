@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
     <title>大神燒肉 材料管理 ERP</title>
+    <meta name="theme-color" content="#8f1f1f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="大神材料 ERP" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="manifest.webmanifest" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -190,7 +195,7 @@
                 <button id="exportPurchasesButton" class="secondary" type="button">匯出CSV</button>
               </div>
             </div>
-            <div class="table-wrap">
+            <div class="table-wrap purchases-table-wrap">
               <table>
                 <thead>
                   <tr>
@@ -200,6 +205,7 @@
                 <tbody id="purchasesBody"></tbody>
               </table>
             </div>
+            <div id="purchaseCards" class="purchase-card-list"></div>
           </section>
         </section>
 
@@ -238,9 +244,26 @@
         </section>
 
         <section id="quickAdd" class="tab-panel">
-          <section class="panel form-panel">
-            <h2>快速新增採購紀錄</h2>
-            <form id="purchaseForm" class="form-grid">
+          <section class="panel form-panel quick-panel">
+            <div class="mobile-entry-head">
+              <div>
+                <p class="eyebrow">Mobile Key-in</p>
+                <h2>快速新增採購紀錄</h2>
+                <p class="muted mobile-only">手機現場建檔：先點供應商與常用品項，再輸入數量、單價即可。</p>
+              </div>
+              <button class="secondary mobile-only quick-fill-today" type="button">今日</button>
+            </div>
+            <div id="mobileQuickTools" class="mobile-quick-tools">
+              <div class="quick-chip-group">
+                <strong>最近供應商</strong>
+                <div id="mobileSupplierChips" class="quick-chip-row"><span class="muted">讀取後顯示</span></div>
+              </div>
+              <div class="quick-chip-group">
+                <strong>常用品項</strong>
+                <div id="mobileItemChips" class="quick-chip-row"><span class="muted">讀取後顯示</span></div>
+              </div>
+            </div>
+            <form id="purchaseForm" class="form-grid mobile-keyin-form">
               <label>日期<input name="日期" type="date" required /></label>
               <label>供應商<input name="供應商" type="text" list="supplierDatalist" placeholder="例：測試供應商" required /></label>
               <label>品項<input name="品項" type="text" list="itemDatalist" placeholder="例：牛五花" required /></label>
@@ -261,7 +284,7 @@
               <datalist id="itemDatalist"></datalist>
               <div class="form-actions span-2">
                 <button class="primary" type="submit">新增採購紀錄</button>
-                <button class="secondary" type="reset">清空</button>
+                <button class="secondary mobile-clear-form" type="reset">清空</button>
               </div>
             </form>
           </section>
@@ -290,7 +313,7 @@
               </div>
               <div>
                 <strong>版本</strong>
-                <span>Okami ERP v3.3：加入員工角色權限控管，依角色限制新增、編輯、作廢、AI 辨識、材料管理與匯出。</span>
+                <span>Okami ERP v3.4：加入手機快速 Key-in 排版、常用供應商／品項快捷鍵、採購紀錄手機卡片式顯示與底部導覽。</span>
               </div>
               <div>
                 <strong>目前登入人員</strong>
