@@ -1312,7 +1312,8 @@ function updateUserDisplay() {
   setPermissionsV33(user, state.permissions || user.permissions || null);
   const labels = permissionLabelsV33().join("、");
   setText("#currentUserName", name);
-  setText("#currentUserRole", `${role}｜${labels}`);
+  // v3.9.2：側邊欄只顯示角色，避免權限清單過長造成左側選單交疊。
+  setText("#currentUserRole", role);
   setText("#settingsCurrentUser", `${name} ｜ ${role}`);
   setText("#settingsPermissionList", labels);
   updatePermissionUiV33();

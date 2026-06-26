@@ -564,3 +564,68 @@ button:disabled {
   .mini-card-grid { grid-template-columns: 1fr 1fr; }
   .sub-panel { padding: 12px; }
 }
+
+/* =============================
+   v3.9.2 左側選單交疊修正
+   讓桌機版 sidebar 採「上方品牌固定、中間選單可滑、下方使用者固定」
+   ============================= */
+@media (min-width: 821px) {
+  .sidebar {
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 22px 20px;
+  }
+
+  .sidebar .brand {
+    flex: 0 0 auto;
+  }
+
+  .sidebar .nav {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+    padding-right: 4px;
+    margin-right: -4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.35) transparent;
+  }
+
+  .sidebar .nav::-webkit-scrollbar {
+    width: 7px;
+  }
+
+  .sidebar .nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.28);
+    border-radius: 999px;
+  }
+
+  .sidebar .user-card {
+    flex: 0 0 auto;
+    margin-top: 0;
+    max-height: 94px;
+    overflow: hidden;
+  }
+
+  .sidebar .user-card small {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.35;
+  }
+
+  .sidebar .logout {
+    flex: 0 0 auto;
+    width: 100%;
+    margin-top: 0;
+  }
+}
