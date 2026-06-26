@@ -142,6 +142,20 @@ code { background: #f5eee3; border: 1px solid var(--line); border-radius: 7px; p
   position: sticky;
   top: 0;
   height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.35) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.28);
+  border-radius: 999px;
 }
 
 .brand {
@@ -153,7 +167,7 @@ code { background: #f5eee3; border: 1px solid var(--line); border-radius: 7px; p
 .brand h2 { margin: 0; }
 .brand p { color: #cfc2b4; margin: 3px 0 0; }
 
-.nav { display: grid; gap: 8px; }
+.nav { display: grid; gap: 8px; min-height: 0; }
 
 .nav-item {
   text-align: left;
