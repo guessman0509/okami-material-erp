@@ -222,22 +222,34 @@ async function loadData() {
 }
 
 async function handleAddPurchase(event) {
+async function handleAddPurchase(event) {
   event.preventDefault();
+
   const form = event.currentTarget;
   const formData = readForm(form);
-  const validation = validatePurchaseInput(formData);
-  if (!validation.ok) {
-    showMessage(validation.message, "error");
-    return;
-  }
+
+  const currentUser =
+    state.currentUser ||
+    state.user ||
+    JSON.parse(sessionStorage.getItem("erpCurrentUser") || "null") ||
+    JSON.parse(sessionStorage.getItem("currentUser") || "null") ||
+    {};
 
   try {
     showMessage("新增採購紀錄中...", "success");
-    const result = await apiRequest("addPurchase", { purchase: formData });
+
+    const result = await apiRequest("addPurchase", {
+      purchase: formData,
+      user: currentUser
+    });
+
     showMessage(`已新增採購紀錄：${result.purchaseId || "完成"}`, "success");
-    if (form) form.reset();
+
+    if (form) {
+      form.reset();
+    }
+
     setTodayDefault();
-    updatePurchasePreview();
     await loadData();
     switchTab("purchases");
   } catch (error) {
