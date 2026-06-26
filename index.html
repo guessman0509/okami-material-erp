@@ -4,24 +4,26 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow, noarchive" />
-    <title>公司材料管理 ERP</title>
+    <title>大神燒肉 材料管理 ERP</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div id="loginView" class="login-shell hidden">
       <section class="login-card">
-        <div class="brand-mark">ERP</div>
-        <h1 id="loginTitle">公司材料管理 ERP</h1>
-        <p class="muted">請輸入公司內部密碼登入。正式資料只會由後端驗證後讀取，不會保存在前端檔案。</p>
+        <div class="brand-mark">大神</div>
+        <h1 id="loginTitle">大神燒肉 材料管理 ERP</h1>
+        <p class="muted">請使用員工帳號與密碼登入。每一筆採購與報價單都會留下建立人，資料只由後端驗證後讀寫。</p>
         <form id="loginForm" class="stack">
+          <label for="accountInput">員工帳號</label>
+          <input id="accountInput" type="text" autocomplete="username" placeholder="例：boss" required />
           <label for="passwordInput">登入密碼</label>
-          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="輸入 ERP 密碼" required />
+          <input id="passwordInput" type="password" autocomplete="current-password" placeholder="輸入員工密碼" required />
           <button class="primary" type="submit">登入系統</button>
         </form>
         <p id="loginMessage" class="message"></p>
         <details class="setup-tip">
           <summary>第一次使用提醒</summary>
-          <p>請先在 <code>app.js</code> 填入 Apps Script 的 <code>/exec</code> 網址，並在 Apps Script 指令碼屬性設定 <code>ERP_PASSWORD</code>。</p>
+          <p>請先在 Google Sheet 建立 <code>員工帳號</code> 分頁，至少建立一組啟用中的帳號，例如 boss。</p>
         </details>
       </section>
     </div>
@@ -29,10 +31,10 @@
     <div id="appView" class="app-shell hidden">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">ERP</div>
+          <div class="brand-mark">大神</div>
           <div>
-            <h2 id="siteName">公司材料管理</h2>
-            <p id="companyName">Internal System</p>
+            <h2 id="siteName">大神材料 ERP</h2>
+            <p id="companyName">大神燒肉 Okami Yakiniku</p>
           </div>
         </div>
 
@@ -45,6 +47,12 @@
           <button class="nav-item" data-tab="aiReceipt">拍照建檔</button>
           <button class="nav-item" data-tab="settings">設定</button>
         </nav>
+
+        <div class="user-card">
+          <span>目前登入</span>
+          <strong id="currentUserName">-</strong>
+          <small id="currentUserRole">-</small>
+        </div>
 
         <button id="logoutButton" class="ghost logout">登出</button>
       </aside>
@@ -82,6 +90,21 @@
               <span>本月最大分類</span>
               <strong id="metricTopCategory">-</strong>
               <small id="metricTopCategoryAmount">$0</small>
+            </article>
+            <article class="metric-card">
+              <span>今日採購</span>
+              <strong id="metricTodayTotal">$0</strong>
+              <small>今日已建檔金額</small>
+            </article>
+            <article class="metric-card">
+              <span>本月食材成本</span>
+              <strong id="metricFoodCost">$0</strong>
+              <small>肉品、海鮮、蔬菜、調味料</small>
+            </article>
+            <article class="metric-card">
+              <span>本月酒水飲品</span>
+              <strong id="metricBeverageCost">$0</strong>
+              <small>酒水與無酒精飲品</small>
             </article>
             <article class="metric-card">
               <span>材料品項</span>
@@ -137,7 +160,10 @@
                 <h2>材料主檔</h2>
                 <p class="muted">搜尋品項、分類、供應商或規格。</p>
               </div>
-              <input id="materialSearch" type="search" placeholder="搜尋材料..." />
+              <div class="inline-tools">
+                <input id="materialSearch" type="search" placeholder="搜尋材料..." />
+                <button id="exportMaterialsButton" class="secondary" type="button">匯出CSV</button>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
@@ -159,13 +185,16 @@
                 <h2>採購紀錄</h2>
                 <p class="muted">依日期、供應商、品項查詢歷史採購資料。</p>
               </div>
-              <input id="purchaseSearch" type="search" placeholder="搜尋採購..." />
+              <div class="inline-tools">
+                <input id="purchaseSearch" type="search" placeholder="搜尋採購..." />
+                <button id="exportPurchasesButton" class="secondary" type="button">匯出CSV</button>
+              </div>
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>採購ID</th><th>日期</th><th>供應商</th><th>品項</th><th>分類</th><th>規格</th><th class="num">數量</th><th>單位</th><th class="num">單價</th><th class="num">金額</th>
+                    <th>採購ID</th><th>日期</th><th>供應商</th><th>品項</th><th>分類</th><th>規格</th><th class="num">數量</th><th>單位</th><th class="num">單價</th><th class="num">金額</th><th>建立人</th>
                   </tr>
                 </thead>
                 <tbody id="purchasesBody"></tbody>
@@ -175,6 +204,10 @@
         </section>
 
         <section id="analysis" class="tab-panel">
+          <section class="panel">
+            <h2>近六月採購趨勢</h2>
+            <div id="monthlyChart" class="bar-chart compact"></div>
+          </section>
           <div class="grid two">
             <section class="panel">
               <h2>供應商支出排行</h2>
@@ -209,8 +242,8 @@
             <h2>快速新增採購紀錄</h2>
             <form id="purchaseForm" class="form-grid">
               <label>日期<input name="日期" type="date" required /></label>
-              <label>供應商<input name="供應商" type="text" placeholder="例：測試供應商" required /></label>
-              <label>品項<input name="品項" type="text" placeholder="例：牛五花" required /></label>
+              <label>供應商<input name="供應商" type="text" list="supplierDatalist" placeholder="例：測試供應商" required /></label>
+              <label>品項<input name="品項" type="text" list="itemDatalist" placeholder="例：牛五花" required /></label>
               <label>標準品項名稱<input name="標準品項名稱" type="text" placeholder="未填則同品項" /></label>
               <label>分類<select name="分類" id="categorySelect"></select></label>
               <label>規格<input name="規格" type="text" placeholder="例：1公斤/包" /></label>
@@ -219,7 +252,13 @@
               <label>換算倍率<input name="換算倍率" type="number" min="0" step="0.001" placeholder="例：1000" /></label>
               <label>標準單位<select name="標準單位" id="standardUnitSelect"></select></label>
               <label>單價<input name="單價" type="number" min="0" step="0.01" required /></label>
+              <label>預估金額<input id="amountPreview" type="text" value="$0" readonly /></label>
+              <label>標準數量<input id="standardQtyPreview" type="text" value="0" readonly /></label>
+              <label>標準單價<input id="standardPricePreview" type="text" value="$0" readonly /></label>
               <label class="span-2">備註<input name="備註" type="text" placeholder="可填單據編號、異常說明等" /></label>
+              <div id="purchaseAssistMessage" class="assist-message neutral span-2">輸入數量與單價後，系統會即時計算金額與標準單價。</div>
+              <datalist id="supplierDatalist"></datalist>
+              <datalist id="itemDatalist"></datalist>
               <div class="form-actions span-2">
                 <button class="primary" type="submit">新增採購紀錄</button>
                 <button class="secondary" type="reset">清空</button>
@@ -230,11 +269,11 @@
 
         <section id="aiReceipt" class="tab-panel">
           <section class="panel form-panel">
-            <h2>AI 拍照辨識單據</h2>
-            <p class="muted">AI 只負責辨識與整理，必須人工確認後才會正式寫入採購紀錄。</p>
+            <h2>報價單 / 單據 AI 辨識</h2>
+            <p class="muted">可上傳報價單、送貨單、發票照片或 PDF。系統會記錄上傳人，AI 協助拆品項與分類，人工確認後才正式寫入採購紀錄。</p>
             <div class="upload-box">
               <input id="receiptFile" type="file" accept="image/*,application/pdf" />
-              <button id="analyzeReceiptButton" class="primary" type="button">辨識單據</button>
+              <button id="analyzeReceiptButton" class="primary" type="button">上傳並辨識</button>
             </div>
             <div id="receiptPreview" class="receipt-preview hidden"></div>
             <div id="aiResult" class="ai-result hidden"></div>
@@ -248,6 +287,14 @@
               <div>
                 <strong>Apps Script URL</strong>
                 <code id="appsScriptUrlText"></code>
+              </div>
+              <div>
+                <strong>版本</strong>
+                <span>Okami ERP v3.0：加入員工帳號登入、建立人紀錄、報價單 AI 辨識與分類協助。</span>
+              </div>
+              <div>
+                <strong>目前登入人員</strong>
+                <span id="settingsCurrentUser">-</span>
               </div>
               <div>
                 <strong>資料來源</strong>

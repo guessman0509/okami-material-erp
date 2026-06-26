@@ -6,26 +6,47 @@
   3. 所有正式資料操作都必須經 Apps Script session token 驗證
 */
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAl5Yt7SD3Eq06zAkSyhDuEYJYC-SHZq3TGfqcIsxeUVhyChDfTCOnk5sWHPSOUxG4/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAl5Yt7SD3Eq06zAkSyhDuEYJYC-SHZq3TGfqcIsxeUVhyChDfTCOnk5sWHPSOUxG4/exec"; // 若重新部署 Apps Script，請更新這裡的 /exec 網址
 
 const BRAND = {
-  siteName: "公司材料管理",
-  companyName: "Internal System",
-  loginTitle: "公司材料管理 ERP"
+  siteName: "大神材料 ERP v3",
+  companyName: "大神燒肉 Okami Yakiniku",
+  loginTitle: "大神燒肉 材料管理 ERP"
 };
 
 const MATERIAL_CATEGORIES = [
-  "肉品", "海鮮", "蔬菜", "飲品", "酒類", "調味料", "包材", "耗材", "設備", "其他"
+  "牛肉類", "牛內臟類", "豬肉類", "豬內臟類", "雞肉類", "雞內臟類",
+  "海鮮類", "蔬菜類", "前菜小菜", "米飯主食", "甜點類",
+  "酒水類", "無酒精飲品", "調味料", "醬料", "包材", "清潔耗材", "設備耗材", "其他"
 ];
 
 const UNIT_OPTIONS = [
-  "個", "包", "盒", "袋", "瓶", "罐", "公斤", "公克", "台斤", "公升", "毫升", "箱", "組", "份"
+  "公克", "公斤", "台斤", "包", "盒", "袋", "瓶", "罐", "桶", "箱",
+  "顆", "尾", "片", "份", "支", "組", "公升", "毫升"
 ];
 
-const STANDARD_UNITS = ["公克", "公斤", "毫升", "公升", "個", "包", "盒", "份"];
+const STANDARD_UNITS = ["公克", "公斤", "毫升", "公升", "個", "包", "盒", "份", "瓶", "桶", "箱"];
+
+const FOOD_COST_CATEGORIES = ["牛肉類", "牛內臟類", "豬肉類", "豬內臟類", "雞肉類", "雞內臟類", "海鮮類", "蔬菜類", "前菜小菜", "米飯主食", "甜點類", "調味料", "醬料"];
+const BEVERAGE_CATEGORIES = ["酒水類", "無酒精飲品"];
+
+const UNIT_CONVERSIONS = {
+  "公斤": { standardUnit: "公克", rate: 1000 },
+  "公克": { standardUnit: "公克", rate: 1 },
+  "台斤": { standardUnit: "公克", rate: 600 },
+  "公升": { standardUnit: "毫升", rate: 1000 },
+  "毫升": { standardUnit: "毫升", rate: 1 },
+  "瓶": { standardUnit: "瓶", rate: 1 },
+  "桶": { standardUnit: "桶", rate: 1 },
+  "箱": { standardUnit: "箱", rate: 1 },
+  "包": { standardUnit: "包", rate: 1 },
+  "盒": { standardUnit: "盒", rate: 1 },
+  "份": { standardUnit: "份", rate: 1 }
+};
 
 const state = {
   token: sessionStorage.getItem("erpSessionToken") || "",
+  currentUser: readStoredUser(),
   materials: [],
   purchases: [],
   dashboard: null,
@@ -76,6 +97,8 @@ function bindEvents() {
   $("#logoutButton").addEventListener("click", handleLogout);
   $("#refreshButton").addEventListener("click", loadData);
   $("#purchaseForm").addEventListener("submit", handleAddPurchase);
+  $("#purchaseForm").addEventListener("input", handlePurchaseFormInput);
+  $("#purchaseForm").addEventListener("change", handlePurchaseFormInput);
   $("#materialSearch").addEventListener("input", renderMaterials);
   $("#purchaseSearch").addEventListener("input", renderPurchases);
   $("#priceItemSelect").addEventListener("change", renderPriceHistory);
@@ -89,6 +112,8 @@ function bindEvents() {
   $$('[data-jump]').forEach((button) => {
     button.addEventListener("click", () => switchTab(button.dataset.jump));
   });
+
+  bindExportButtons();
 }
 
 function setTodayDefault() {
@@ -98,7 +123,12 @@ function setTodayDefault() {
 
 async function handleLogin(event) {
   event.preventDefault();
+  const account = $("#accountInput").value.trim();
   const password = $("#passwordInput").value.trim();
+  if (!account) {
+    $("#loginMessage").textContent = "請輸入員工帳號。";
+    return;
+  }
   if (!APPS_SCRIPT_URL) {
     $("#loginMessage").textContent = "尚未設定 Apps Script URL。";
     return;
@@ -106,9 +136,11 @@ async function handleLogin(event) {
 
   try {
     $("#loginMessage").textContent = "登入中...";
-    const result = await apiRequest("login", { password }, false);
+    const result = await apiRequest("login", { account, password }, false);
     state.token = result.token;
+    state.currentUser = result.user || null;
     sessionStorage.setItem("erpSessionToken", state.token);
+    sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
     $("#passwordInput").value = "";
     showApp();
     await loadData();
@@ -119,7 +151,11 @@ async function handleLogin(event) {
 
 async function verifySession() {
   try {
-    await apiRequest("verifySession", {});
+    const result = await apiRequest("verifySession", {});
+    if (result.user) {
+      state.currentUser = result.user;
+      sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
+    }
     showApp();
     await loadData();
   } catch (_error) {
@@ -140,7 +176,9 @@ async function handleLogout() {
 
 function clearSession() {
   state.token = "";
+  state.currentUser = null;
   sessionStorage.removeItem("erpSessionToken");
+  sessionStorage.removeItem("erpCurrentUser");
 }
 
 function showLogin() {
@@ -151,6 +189,7 @@ function showLogin() {
 function showApp() {
   $("#loginView").classList.add("hidden");
   $("#appView").classList.remove("hidden");
+  updateUserDisplay();
 }
 
 function switchTab(tabName) {
@@ -168,7 +207,14 @@ async function loadData() {
     state.materials = Array.isArray(result.materials) ? result.materials : [];
     state.purchases = Array.isArray(result.purchases) ? result.purchases : [];
     state.dashboard = result.dashboard || buildDashboardLocally(state.materials, state.purchases);
+    if (result.currentUser) {
+      state.currentUser = result.currentUser;
+      sessionStorage.setItem("erpCurrentUser", JSON.stringify(state.currentUser || {}));
+    }
+    updateUserDisplay();
     renderAll();
+    updateDatalists();
+    updatePurchasePreview();
     hideMessage();
   } catch (error) {
     showMessage(error.message || "資料讀取失敗。", "error");
@@ -177,27 +223,110 @@ async function loadData() {
 
 async function handleAddPurchase(event) {
   event.preventDefault();
-
   const form = event.currentTarget;
   const formData = readForm(form);
+  const validation = validatePurchaseInput(formData);
+  if (!validation.ok) {
+    showMessage(validation.message, "error");
+    return;
+  }
 
   try {
     showMessage("新增採購紀錄中...", "success");
-
     const result = await apiRequest("addPurchase", { purchase: formData });
-
     showMessage(`已新增採購紀錄：${result.purchaseId || "完成"}`, "success");
-
-    if (form) {
-      form.reset();
-    }
-
+    if (form) form.reset();
     setTodayDefault();
+    updatePurchasePreview();
     await loadData();
     switchTab("purchases");
   } catch (error) {
     showMessage(error.message || "新增失敗。", "error");
   }
+}
+
+function handlePurchaseFormInput(event) {
+  const fieldName = event.target?.name;
+  if (fieldName === "單位") applyUnitConversionPreset();
+  if (fieldName === "品項") autoFillFromMaterial();
+  updatePurchasePreview();
+}
+
+function validatePurchaseInput(data) {
+  if (!data["供應商"]) return { ok: false, message: "供應商不可空白。" };
+  if (!data["品項"]) return { ok: false, message: "品項不可空白。" };
+  if (numberOrZero(data["數量"]) <= 0) return { ok: false, message: "數量必須大於 0。" };
+  if (numberOrZero(data["單價"]) <= 0) return { ok: false, message: "單價必須大於 0。" };
+  return { ok: true };
+}
+
+function applyUnitConversionPreset(force = false) {
+  const form = $("#purchaseForm");
+  if (!form) return;
+  const unit = form.elements["單位"]?.value;
+  const preset = UNIT_CONVERSIONS[unit];
+  if (!preset) return;
+  const rateInput = form.elements["換算倍率"];
+  const standardUnitInput = form.elements["標準單位"];
+  if (rateInput && (force || !rateInput.value || Number(rateInput.value) === 1)) rateInput.value = preset.rate;
+  if (standardUnitInput && (force || !standardUnitInput.value)) standardUnitInput.value = preset.standardUnit;
+}
+
+function autoFillFromMaterial() {
+  const form = $("#purchaseForm");
+  if (!form) return;
+  const itemName = normalize(form.elements["品項"]?.value);
+  if (!itemName) return;
+  const material = state.materials.find((item) => normalize(item["品項"]) === itemName || normalize(item["標準品項名稱"]) === itemName);
+  if (!material) return;
+  setIfEmpty(form.elements["標準品項名稱"], material["標準品項名稱"] || material["品項"]);
+  setIfEmpty(form.elements["分類"], material["分類"] || "其他");
+  setIfEmpty(form.elements["規格"], material["規格"] || "");
+  setIfEmpty(form.elements["單位"], material["單位"] || "");
+  setIfEmpty(form.elements["換算倍率"], material["換算倍率"] || "");
+  setIfEmpty(form.elements["標準單位"], material["標準單位"] || "");
+}
+
+function setIfEmpty(input, value) {
+  if (!input || value === undefined || value === null || value === "") return;
+  if (!input.value) input.value = value;
+}
+
+function updatePurchasePreview() {
+  const form = $("#purchaseForm");
+  if (!form) return;
+  const quantity = numberOrZero(form.elements["數量"]?.value);
+  const unitPrice = numberOrZero(form.elements["單價"]?.value);
+  const conversionRate = numberOrZero(form.elements["換算倍率"]?.value || 1) || 1;
+  const amount = quantity * unitPrice;
+  const standardQty = quantity * conversionRate;
+  const standardUnitPrice = standardQty ? amount / standardQty : 0;
+
+  setText("#amountPreview", money(amount));
+  setText("#standardQtyPreview", `${formatNumber(standardQty)} ${form.elements["標準單位"]?.value || ""}`.trim());
+  setText("#standardPricePreview", standardUnitPrice ? money(standardUnitPrice) : "$0");
+
+  const item = form.elements["標準品項名稱"]?.value || form.elements["品項"]?.value;
+  const alert = buildInlinePriceAlert(item, standardUnitPrice);
+  const msg = $("#purchaseAssistMessage");
+  if (msg) {
+    msg.textContent = alert.message;
+    msg.className = `assist-message ${alert.level}`;
+  }
+}
+
+function buildInlinePriceAlert(itemName, standardUnitPrice) {
+  if (!itemName || !standardUnitPrice) return { level: "neutral", message: "輸入數量與單價後，系統會即時計算金額與標準單價。" };
+  const rows = state.purchases.filter((row) => normalize(row["標準品項名稱"] || row["品項"]) === normalize(itemName));
+  if (rows.length < 2) return { level: "neutral", message: "此品項歷史資料較少，暫不做價格警示。" };
+  const prices = rows.map((row) => numberOrZero(row["標準單位價格"] || row["單價"])).filter(Boolean);
+  if (!prices.length) return { level: "neutral", message: "尚無可比較的標準單價。" };
+  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const diff = ((standardUnitPrice - avg) / avg) * 100;
+  if (diff >= 30) return { level: "danger", message: `紅色警示：目前標準單價比歷史平均高 ${formatPercent(diff)}，建議確認報價。` };
+  if (diff >= 15) return { level: "warning", message: `黃色提醒：目前標準單價比歷史平均高 ${formatPercent(diff)}。` };
+  if (diff <= -10) return { level: "success", message: `漂亮，這次標準單價比歷史平均低 ${formatPercent(Math.abs(diff))}。` };
+  return { level: "success", message: "價格落在正常範圍內。" };
 }
 
 async function handleAnalyzeReceipt() {
@@ -211,7 +340,7 @@ async function handleAnalyzeReceipt() {
   try {
     showMessage("AI 辨識中，請稍候...", "success");
     const filePayload = await readFileAsBase64(file);
-    const result = await apiRequest("analyzeReceiptImage", {
+    const result = await apiRequest("analyzeQuoteImage", {
       file: {
         name: file.name,
         mimeType: file.type || "application/octet-stream",
@@ -256,6 +385,11 @@ function renderDashboard() {
   $("#metricThisMonth").textContent = money(thisMonth);
   $("#metricMonthChange").textContent = `較上月 ${formatPercent(change)}`;
   $("#metricMaterialCount").textContent = String(dashboard.activeMaterialCount ?? state.materials.length);
+
+  const todayRows = filterPurchasesByDate(state.purchases, new Date());
+  setText("#metricTodayTotal", money(sumAmount(todayRows)));
+  setText("#metricFoodCost", money(sumByCategories(filterThisMonthRows(state.purchases), FOOD_COST_CATEGORIES)));
+  setText("#metricBeverageCost", money(sumByCategories(filterThisMonthRows(state.purchases), BEVERAGE_CATEGORIES)));
 
   const topSupplier = firstItem(dashboard.thisMonthSupplierTotals);
   $("#metricTopSupplier").textContent = topSupplier?.name || "-";
@@ -328,14 +462,16 @@ function renderPurchases() {
       <td>${escapeHtml(item["單位"] || "")}</td>
       <td class="num">${money(item["單價"])}</td>
       <td class="num">${money(item["金額"])}</td>
+      <td>${escapeHtml(item["建立人姓名"] || item["建立人"] || "")}</td>
     </tr>
-  `).join("") : emptyRow(10, "尚無採購紀錄");
+  `).join("") : emptyRow(11, "尚無採購紀錄");
 }
 
 function renderAnalysis() {
   const dashboard = state.dashboard || buildDashboardLocally(state.materials, state.purchases);
   renderBarChart("#supplierChart", dashboard.supplierTotals || []);
   renderBarChart("#categoryChart", dashboard.categoryTotals || []);
+  renderBarChart("#monthlyChart", monthlyTotals(state.purchases, 6));
 
   const select = $("#priceItemSelect");
   const items = unique(state.purchases.map((item) => item["標準品項名稱"] || item["品項"]).filter(Boolean)).sort();
@@ -390,7 +526,8 @@ function renderAiResult(receipt) {
 
   target.innerHTML = `
     <strong>辨識結果：請人工確認後再寫入</strong>
-    <p class="muted">供應商：${escapeHtml(receipt.supplier || "待確認")} ｜ 日期：${escapeHtml(receipt.date || "待確認")}</p>
+    <p class="muted">供應商：${escapeHtml(receipt.supplier || "待確認")} ｜ 日期：${escapeHtml(receipt.date || "待確認")} ｜ 報價單ID：${escapeHtml(receipt.quoteId || "未建立")}</p>
+    ${receipt.fileUrl ? `<p class="muted"><a href="${escapeHtml(receipt.fileUrl)}" target="_blank" rel="noopener">開啟報價單檔案</a></p>` : ""}
     ${items.map((item, index) => `
       <div class="ai-item" data-index="${index}">
         <label>品項<input data-field="品項" value="${escapeHtml(item.name || item["品項"] || "")}" /></label>
@@ -412,7 +549,7 @@ function renderAiResult(receipt) {
       const supplier = receipt.supplier || "待確認供應商";
       const date = receipt.date || new Date().toISOString().slice(0, 10);
       const purchaseItems = $$(".ai-item").map((box) => {
-        const item = { 日期: date, 供應商: supplier };
+        const item = { 日期: date, 供應商: supplier, 報價單ID: receipt.quoteId || "", 報價單檔案連結: receipt.fileUrl || "", AI辨識: "是", AI信心分數: receipt.confidence || "" };
         box.querySelectorAll("[data-field]").forEach((input) => { item[input.dataset.field] = input.value; });
         return item;
       });
@@ -430,6 +567,75 @@ function renderAiResult(receipt) {
       showMessage(error.message || "AI 資料寫入失敗。", "error");
     }
   });
+}
+
+function updateDatalists() {
+  fillDatalist("#supplierDatalist", unique(state.purchases.map((item) => item["供應商"]).concat(state.materials.map((item) => item["供應商"]))).filter(Boolean).sort());
+  fillDatalist("#itemDatalist", unique(state.materials.map((item) => item["品項"]).concat(state.purchases.map((item) => item["品項"]))).filter(Boolean).sort());
+}
+
+function fillDatalist(selector, values) {
+  const target = $(selector);
+  if (!target) return;
+  target.innerHTML = values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+}
+
+function filterThisMonthRows(rows) {
+  const key = monthKey(new Date());
+  return rows.filter((row) => monthKey(parseDate(row["日期"])) === key);
+}
+
+function filterPurchasesByDate(rows, date) {
+  const key = new Date(date).toISOString().slice(0, 10);
+  return rows.filter((row) => String(row["日期"] || "").slice(0, 10) === key);
+}
+
+function sumByCategories(rows, categories) {
+  const set = new Set(categories);
+  return sumAmount(rows.filter((row) => set.has(row["分類"])));
+}
+
+function monthlyTotals(rows, months = 6) {
+  const now = new Date();
+  const labels = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(monthKey(d));
+  }
+  return labels.map((name) => ({
+    name,
+    amount: sumAmount(rows.filter((row) => monthKey(parseDate(row["日期"])) === name))
+  }));
+}
+
+function setText(selector, value) {
+  const target = $(selector);
+  if (target) target.textContent = value;
+}
+
+function exportCsv(filename, rows, headers) {
+  const csv = [headers.join(",")].concat(rows.map((row) => headers.map((header) => csvCell(row[header])).join(","))).join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function bindExportButtons() {
+  const purchaseButton = $("#exportPurchasesButton");
+  const materialButton = $("#exportMaterialsButton");
+  if (purchaseButton) purchaseButton.addEventListener("click", () => exportCsv(`purchases-${new Date().toISOString().slice(0, 10)}.csv`, state.purchases, ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "單價", "金額", "標準單位價格", "報價單ID", "報價單檔案連結", "AI辨識", "AI信心分數", "備註", "建立人ID", "建立人姓名"]));
+  if (materialButton) materialButton.addEventListener("click", () => exportCsv(`materials-${new Date().toISOString().slice(0, 10)}.csv`, state.materials, ["ERP代碼", "品項", "標準品項名稱", "分類", "規格", "單位", "最新單價", "標準單位價格", "供應商", "最近採購日", "使用中", "備註"]));
 }
 
 async function apiRequest(action, payload = {}, includeToken = true) {
@@ -529,6 +735,25 @@ function cheapestByItem(rows) {
     }
   });
   return Array.from(map.values()).sort((a, b) => a.item.localeCompare(b.item, "zh-Hant"));
+}
+
+
+function readStoredUser() {
+  try {
+    const raw = sessionStorage.getItem("erpCurrentUser");
+    return raw ? JSON.parse(raw) : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function updateUserDisplay() {
+  const user = state.currentUser || {};
+  const name = user.name || user["姓名"] || "-";
+  const role = user.role || user["角色"] || "-";
+  setText("#currentUserName", name);
+  setText("#currentUserRole", role);
+  setText("#settingsCurrentUser", `${name} ｜ ${role}`);
 }
 
 function firstItem(rows = []) { return rows[0] || null; }
