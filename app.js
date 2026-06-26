@@ -9,7 +9,7 @@
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAl5Yt7SD3Eq06zAkSyhDuEYJYC-SHZq3TGfqcIsxeUVhyChDfTCOnk5sWHPSOUxG4/exec"; // 若重新部署 Apps Script，請更新這裡的 /exec 網址
 
 const BRAND = {
-  siteName: "大神材料 ERP v3",
+  siteName: "大神材料 ERP v3.2",
   companyName: "大神燒肉 Okami Yakiniku",
   loginTitle: "大神燒肉 材料管理 ERP"
 };
@@ -222,34 +222,22 @@ async function loadData() {
 }
 
 async function handleAddPurchase(event) {
-async function handleAddPurchase(event) {
   event.preventDefault();
-
   const form = event.currentTarget;
   const formData = readForm(form);
-
-  const currentUser =
-    state.currentUser ||
-    state.user ||
-    JSON.parse(sessionStorage.getItem("erpCurrentUser") || "null") ||
-    JSON.parse(sessionStorage.getItem("currentUser") || "null") ||
-    {};
+  const validation = validatePurchaseInput(formData);
+  if (!validation.ok) {
+    showMessage(validation.message, "error");
+    return;
+  }
 
   try {
     showMessage("新增採購紀錄中...", "success");
-
-    const result = await apiRequest("addPurchase", {
-      purchase: formData,
-      user: currentUser
-    });
-
+    const result = await apiRequest("addPurchase", { purchase: formData, user: state.currentUser || {} });
     showMessage(`已新增採購紀錄：${result.purchaseId || "完成"}`, "success");
-
-    if (form) {
-      form.reset();
-    }
-
+    if (form) form.reset();
     setTodayDefault();
+    updatePurchasePreview();
     await loadData();
     switchTab("purchases");
   } catch (error) {
@@ -568,7 +556,7 @@ function renderAiResult(receipt) {
 
       showMessage("寫入 AI 確認資料中...", "success");
       for (const purchase of purchaseItems) {
-        await apiRequest("addPurchase", { purchase });
+        await apiRequest("addPurchase", { purchase, user: state.currentUser || {} });
       }
       showMessage(`已寫入 ${purchaseItems.length} 筆採購紀錄。`, "success");
       target.classList.add("hidden");
@@ -791,3 +779,374 @@ function showMessage(text, type = "success") {
   target.classList.remove("hidden");
 }
 function hideMessage() { $("#globalMessage").classList.add("hidden"); }
+
+
+/* =============================
+   v3.2 採購編輯／作廢功能
+   ============================= */
+
+function isVoidedPurchase(row) {
+  return String(row?.["狀態"] || "正常").trim() === "已作廢";
+}
+
+function activePurchases(rows = state.purchases) {
+  return rows.filter((row) => !isVoidedPurchase(row));
+}
+
+function bindEvents() {
+  $("#loginForm").addEventListener("submit", handleLogin);
+  $("#logoutButton").addEventListener("click", handleLogout);
+  $("#refreshButton").addEventListener("click", loadData);
+  $("#purchaseForm").addEventListener("submit", handleAddPurchase);
+  $("#purchaseForm").addEventListener("input", handlePurchaseFormInput);
+  $("#purchaseForm").addEventListener("change", handlePurchaseFormInput);
+  $("#materialSearch").addEventListener("input", renderMaterials);
+  $("#purchaseSearch").addEventListener("input", renderPurchases);
+  $("#priceItemSelect").addEventListener("change", renderPriceHistory);
+  $("#analyzeReceiptButton").addEventListener("click", handleAnalyzeReceipt);
+  $("#receiptFile").addEventListener("change", previewReceiptFile);
+
+  $$(".nav-item").forEach((button) => {
+    button.addEventListener("click", () => switchTab(button.dataset.tab));
+  });
+
+  $$('[data-jump]').forEach((button) => {
+    button.addEventListener("click", () => switchTab(button.dataset.jump));
+  });
+
+  document.addEventListener("click", handlePurchaseActionClick);
+  const editForm = $("#editPurchaseForm");
+  if (editForm) {
+    editForm.addEventListener("submit", handleEditPurchaseSubmit);
+    editForm.addEventListener("input", updateEditPurchasePreview);
+    editForm.addEventListener("change", updateEditPurchasePreview);
+  }
+  const voidForm = $("#voidPurchaseForm");
+  if (voidForm) voidForm.addEventListener("submit", handleVoidPurchaseSubmit);
+
+  ["#editPurchaseCloseButton", "#editPurchaseCancelButton"].forEach((selector) => {
+    const el = $(selector);
+    if (el) el.addEventListener("click", closeEditPurchaseModal);
+  });
+  ["#voidPurchaseCloseButton", "#voidPurchaseCancelButton"].forEach((selector) => {
+    const el = $(selector);
+    if (el) el.addEventListener("click", closeVoidPurchaseModal);
+  });
+  const editModal = $("#editPurchaseModal");
+  if (editModal) editModal.addEventListener("click", (event) => {
+    if (event.target === editModal) closeEditPurchaseModal();
+  });
+  const voidModal = $("#voidPurchaseModal");
+  if (voidModal) voidModal.addEventListener("click", (event) => {
+    if (event.target === voidModal) closeVoidPurchaseModal();
+  });
+
+  bindExportButtons();
+}
+
+function initOptions() {
+  fillSelect($("#categorySelect"), MATERIAL_CATEGORIES, "其他");
+  fillSelect($("#unitSelect"), UNIT_OPTIONS, "公斤");
+  fillSelect($("#standardUnitSelect"), STANDARD_UNITS, "公克");
+  fillSelect($("#editCategorySelect"), MATERIAL_CATEGORIES, "其他");
+  fillSelect($("#editUnitSelect"), UNIT_OPTIONS, "公斤");
+  fillSelect($("#editStandardUnitSelect"), STANDARD_UNITS, "公克");
+}
+
+async function handleAddPurchase(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const formData = readForm(form);
+  const validation = validatePurchaseInput(formData);
+  if (!validation.ok) {
+    showMessage(validation.message, "error");
+    return;
+  }
+
+  try {
+    showMessage("新增採購紀錄中...", "success");
+    const result = await apiRequest("addPurchase", { purchase: formData, user: state.currentUser || {} });
+    showMessage(`已新增採購紀錄：${result.purchaseId || "完成"}`, "success");
+    if (form) form.reset();
+    setTodayDefault();
+    updatePurchasePreview();
+    await loadData();
+    switchTab("purchases");
+  } catch (error) {
+    showMessage(error.message || "新增失敗。", "error");
+  }
+}
+
+function renderDashboard() {
+  const activeRows = activePurchases(state.purchases);
+  const dashboard = state.dashboard || buildDashboardLocally(state.materials, activeRows);
+  const thisMonth = numberOrZero(dashboard.thisMonthTotal);
+  const lastMonth = numberOrZero(dashboard.lastMonthTotal);
+  const change = lastMonth ? ((thisMonth - lastMonth) / lastMonth) * 100 : 0;
+
+  $("#metricThisMonth").textContent = money(thisMonth);
+  $("#metricMonthChange").textContent = `較上月 ${formatPercent(change)}`;
+  $("#metricMaterialCount").textContent = String(dashboard.activeMaterialCount ?? state.materials.length);
+
+  const todayRows = filterPurchasesByDate(activeRows, new Date());
+  setText("#metricTodayTotal", money(sumAmount(todayRows)));
+  setText("#metricFoodCost", money(sumByCategories(filterThisMonthRows(activeRows), FOOD_COST_CATEGORIES)));
+  setText("#metricBeverageCost", money(sumByCategories(filterThisMonthRows(activeRows), BEVERAGE_CATEGORIES)));
+
+  const topSupplier = firstItem(dashboard.thisMonthSupplierTotals);
+  $("#metricTopSupplier").textContent = topSupplier?.name || "-";
+  $("#metricTopSupplierAmount").textContent = money(topSupplier?.amount || 0);
+
+  const topCategory = firstItem(dashboard.thisMonthCategoryTotals);
+  $("#metricTopCategory").textContent = topCategory?.name || "-";
+  $("#metricTopCategoryAmount").textContent = money(topCategory?.amount || 0);
+
+  const recent = dashboard.recentPurchases || activeRows.slice(-10).reverse();
+  $("#recentPurchasesBody").innerHTML = recent.length ? recent.map((item) => `
+    <tr>
+      <td>${escapeHtml(item["日期"] || "")}</td>
+      <td>${escapeHtml(item["供應商"] || "")}</td>
+      <td>${escapeHtml(item["品項"] || "")}</td>
+      <td class="num">${money(item["金額"])}</td>
+    </tr>
+  `).join("") : emptyRow(4, "尚無採購紀錄");
+
+  const alerts = dashboard.priceAlerts || [];
+  $("#priceAlerts").innerHTML = alerts.length ? alerts.map((alert) => `
+    <div class="alert-item ${alert.level === "red" ? "danger" : ""}">
+      <strong>${escapeHtml(alert.item || "未命名品項")}</strong>
+      <p>本次標準單價 ${money(alert.latestPrice)}，近180天平均 ${money(alert.averagePrice)}，高出 ${formatPercent(alert.diffPercent || 0)}。</p>
+      <small>${escapeHtml(alert.supplier || "")} ｜ ${escapeHtml(alert.date || "")}</small>
+    </div>
+  `).join("") : `<div class="list empty">目前沒有價格異常提醒。</div>`;
+
+  const cheapest = dashboard.cheapestByItem || [];
+  $("#cheapestBody").innerHTML = cheapest.length ? cheapest.slice(0, 20).map((item) => `
+    <tr>
+      <td>${escapeHtml(item.item || "")}</td>
+      <td>${escapeHtml(item.supplier || "")}</td>
+      <td class="num">${money(item.standardUnitPrice)}</td>
+      <td>${escapeHtml(item.date || "")}</td>
+    </tr>
+  `).join("") : emptyRow(4, "尚無可比較資料");
+}
+
+function renderPurchases() {
+  const keyword = normalize($("#purchaseSearch").value);
+  const rows = state.purchases.filter((item) => normalize(Object.values(item).join(" ")).includes(keyword)).reverse();
+  $("#purchasesBody").innerHTML = rows.length ? rows.map((item) => {
+    const status = item["狀態"] || "正常";
+    const isVoided = status === "已作廢";
+    return `
+      <tr class="${isVoided ? "voided-row" : ""}">
+        <td>${escapeHtml(item["採購ID"] || "")}</td>
+        <td>${escapeHtml(item["日期"] || "")}</td>
+        <td>${escapeHtml(item["供應商"] || "")}</td>
+        <td>${escapeHtml(item["品項"] || "")}</td>
+        <td>${escapeHtml(item["分類"] || "")}</td>
+        <td>${escapeHtml(item["規格"] || "")}</td>
+        <td class="num">${formatNumber(item["數量"])}</td>
+        <td>${escapeHtml(item["單位"] || "")}</td>
+        <td class="num">${money(item["單價"])}</td>
+        <td class="num">${money(item["金額"])}</td>
+        <td><span class="status-badge ${isVoided ? "voided" : "normal"}">${escapeHtml(status)}</span></td>
+        <td>${escapeHtml(item["建立人姓名"] || item["建立人"] || "")}</td>
+        <td class="actions-cell">
+          ${isVoided ? `<span class="muted">已作廢</span>` : `
+            <button class="text-button purchase-edit" data-purchase-id="${escapeHtml(item["採購ID"] || "")}" type="button">編輯</button>
+            <button class="text-button danger-text purchase-void" data-purchase-id="${escapeHtml(item["採購ID"] || "")}" type="button">作廢</button>
+          `}
+        </td>
+      </tr>
+    `;
+  }).join("") : emptyRow(13, "尚無採購紀錄");
+}
+
+function renderAnalysis() {
+  const activeRows = activePurchases(state.purchases);
+  const dashboard = state.dashboard || buildDashboardLocally(state.materials, activeRows);
+  renderBarChart("#supplierChart", dashboard.supplierTotals || []);
+  renderBarChart("#categoryChart", dashboard.categoryTotals || []);
+  renderBarChart("#monthlyChart", monthlyTotals(activeRows, 6));
+
+  const select = $("#priceItemSelect");
+  const items = unique(activeRows.map((item) => item["標準品項名稱"] || item["品項"]).filter(Boolean)).sort();
+  const current = select.value;
+  select.innerHTML = items.length ? items.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("") : `<option value="">尚無品項</option>`;
+  if (items.includes(current)) select.value = current;
+  renderPriceHistory();
+}
+
+function renderPriceHistory() {
+  const itemName = $("#priceItemSelect").value;
+  const rows = activePurchases(state.purchases)
+    .filter((item) => (item["標準品項名稱"] || item["品項"]) === itemName)
+    .sort((a, b) => String(b["日期"] || "").localeCompare(String(a["日期"] || "")));
+
+  $("#priceHistoryBody").innerHTML = rows.length ? rows.map((item) => `
+    <tr>
+      <td>${escapeHtml(item["日期"] || "")}</td>
+      <td>${escapeHtml(item["供應商"] || "")}</td>
+      <td>${escapeHtml(item["品項"] || "")}</td>
+      <td>${escapeHtml(item["規格"] || "")}</td>
+      <td class="num">${money(item["標準單位價格"] || item["單價"])}</td>
+      <td class="num">${money(item["金額"])}</td>
+    </tr>
+  `).join("") : emptyRow(6, "尚無歷史價格資料");
+}
+
+function buildDashboardLocally(materials, purchases) {
+  const activeRows = activePurchases(purchases);
+  const now = new Date();
+  const thisMonthKey = monthKey(now);
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthKey = monthKey(lastMonthDate);
+
+  const thisMonthRows = activeRows.filter((item) => monthKey(parseDate(item["日期"])) === thisMonthKey);
+  const lastMonthRows = activeRows.filter((item) => monthKey(parseDate(item["日期"])) === lastMonthKey);
+
+  return {
+    thisMonthTotal: sumAmount(thisMonthRows),
+    lastMonthTotal: sumAmount(lastMonthRows),
+    activeMaterialCount: materials.filter((item) => String(item["使用中"] || "是") !== "否").length,
+    supplierTotals: totalsBy(activeRows, "供應商"),
+    categoryTotals: totalsBy(activeRows, "分類"),
+    thisMonthSupplierTotals: totalsBy(thisMonthRows, "供應商"),
+    thisMonthCategoryTotals: totalsBy(thisMonthRows, "分類"),
+    recentPurchases: activeRows.slice(-10).reverse(),
+    cheapestByItem: cheapestByItem(activeRows),
+    priceAlerts: []
+  };
+}
+
+function handlePurchaseActionClick(event) {
+  const editButton = event.target.closest?.(".purchase-edit");
+  const voidButton = event.target.closest?.(".purchase-void");
+  if (editButton) {
+    openEditPurchaseModal(editButton.dataset.purchaseId);
+  }
+  if (voidButton) {
+    openVoidPurchaseModal(voidButton.dataset.purchaseId);
+  }
+}
+
+function findPurchaseById(purchaseId) {
+  return state.purchases.find((item) => String(item["採購ID"]) === String(purchaseId));
+}
+
+function openEditPurchaseModal(purchaseId) {
+  const purchase = findPurchaseById(purchaseId);
+  if (!purchase) {
+    showMessage("找不到這筆採購紀錄。", "error");
+    return;
+  }
+  if (isVoidedPurchase(purchase)) {
+    showMessage("已作廢的採購紀錄不可編輯。", "error");
+    return;
+  }
+  const form = $("#editPurchaseForm");
+  if (!form) return;
+  ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "換算倍率", "標準數量", "標準單位", "單價", "備註"].forEach((key) => {
+    if (form.elements[key]) form.elements[key].value = purchase[key] || "";
+  });
+  if (form.elements["分類"] && !form.elements["分類"].value) form.elements["分類"].value = "其他";
+  if (form.elements["單位"] && !form.elements["單位"].value) form.elements["單位"].value = "公斤";
+  if (form.elements["標準單位"] && !form.elements["標準單位"].value) form.elements["標準單位"].value = "公克";
+  updateEditPurchasePreview();
+  $("#editPurchaseModal").classList.remove("hidden");
+}
+
+function closeEditPurchaseModal() {
+  const modal = $("#editPurchaseModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function updateEditPurchasePreview() {
+  const form = $("#editPurchaseForm");
+  const target = $("#editPurchasePreview");
+  if (!form || !target) return;
+  const quantity = numberOrZero(form.elements["數量"]?.value);
+  const unitPrice = numberOrZero(form.elements["單價"]?.value);
+  const conversionRate = numberOrZero(form.elements["換算倍率"]?.value || 1) || 1;
+  const amount = quantity * unitPrice;
+  const standardQty = quantity * conversionRate;
+  const standardUnitPrice = standardQty ? amount / standardQty : 0;
+  target.textContent = `修改後金額：${money(amount)}｜標準數量：${formatNumber(standardQty)} ${form.elements["標準單位"]?.value || ""}｜標準單價：${standardUnitPrice ? money(standardUnitPrice) : "$0"}`;
+}
+
+async function handleEditPurchaseSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const data = readForm(form);
+  const validation = validatePurchaseInput(data);
+  if (!validation.ok) {
+    showMessage(validation.message, "error");
+    return;
+  }
+  try {
+    showMessage("儲存採購紀錄修改中...", "success");
+    const result = await apiRequest("updatePurchase", {
+      purchaseId: data["採購ID"],
+      purchase: data,
+      user: state.currentUser || {}
+    });
+    showMessage(`已更新採購紀錄：${result.purchaseId || data["採購ID"]}`, "success");
+    closeEditPurchaseModal();
+    await loadData();
+    switchTab("purchases");
+  } catch (error) {
+    showMessage(error.message || "修改失敗。", "error");
+  }
+}
+
+function openVoidPurchaseModal(purchaseId) {
+  const purchase = findPurchaseById(purchaseId);
+  if (!purchase) {
+    showMessage("找不到這筆採購紀錄。", "error");
+    return;
+  }
+  const form = $("#voidPurchaseForm");
+  if (!form) return;
+  form.reset();
+  form.elements["採購ID"].value = purchaseId;
+  setText("#voidPurchaseSummary", `準備作廢：${purchaseId}｜${purchase["供應商"] || ""}｜${purchase["品項"] || ""}｜${money(purchase["金額"])}`);
+  $("#voidPurchaseModal").classList.remove("hidden");
+}
+
+function closeVoidPurchaseModal() {
+  const modal = $("#voidPurchaseModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function handleVoidPurchaseSubmit(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const purchaseId = form.elements["採購ID"]?.value;
+  const reason = form.elements["作廢原因"]?.value.trim();
+  if (!reason) {
+    showMessage("請填寫作廢原因。", "error");
+    return;
+  }
+  if (!confirm(`確定要作廢 ${purchaseId} 嗎？\n此動作不會刪除資料，但會排除 Dashboard 與分析。`)) return;
+  try {
+    showMessage("作廢採購紀錄中...", "success");
+    const result = await apiRequest("voidPurchase", {
+      purchaseId,
+      reason,
+      user: state.currentUser || {}
+    });
+    showMessage(`已作廢採購紀錄：${result.purchaseId || purchaseId}`, "success");
+    closeVoidPurchaseModal();
+    await loadData();
+    switchTab("purchases");
+  } catch (error) {
+    showMessage(error.message || "作廢失敗。", "error");
+  }
+}
+
+function bindExportButtons() {
+  const purchaseButton = $("#exportPurchasesButton");
+  const materialButton = $("#exportMaterialsButton");
+  if (purchaseButton) purchaseButton.addEventListener("click", () => exportCsv(`purchases-${new Date().toISOString().slice(0, 10)}.csv`, state.purchases, ["採購ID", "日期", "供應商", "品項", "標準品項名稱", "分類", "規格", "數量", "單位", "單價", "金額", "標準單位價格", "狀態", "作廢原因", "作廢人ID", "作廢人姓名", "作廢時間", "報價單ID", "報價單檔案連結", "AI辨識", "AI信心分數", "備註", "建立人ID", "建立人姓名", "最後修改人ID", "最後修改人姓名"]));
+  if (materialButton) materialButton.addEventListener("click", () => exportCsv(`materials-${new Date().toISOString().slice(0, 10)}.csv`, state.materials, ["ERP代碼", "品項", "標準品項名稱", "分類", "規格", "單位", "最新單價", "標準單位價格", "供應商", "最近採購日", "使用中", "備註"]));
+}

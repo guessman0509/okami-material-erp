@@ -314,3 +314,20 @@ td { font-size: 14px; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .nav { grid-template-columns: 1fr; }
 }
+
+/* v3.2 edit / void UI */
+.actions-cell { display: flex; align-items: center; gap: 8px; }
+.danger-text { color: var(--danger); }
+.status-badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 900; border: 1px solid var(--line); }
+.status-badge.normal { color: #256d39; background: #eef9f1; border-color: #b7dfc0; }
+.status-badge.voided { color: var(--danger); background: #fff1ef; border-color: rgba(159, 29, 29, 0.35); }
+.voided-row td { color: #8e8177; background: rgba(155, 132, 105, 0.08); text-decoration: none; }
+.voided-row td:nth-child(4), .voided-row td:nth-child(10) { text-decoration: line-through; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(25, 16, 12, 0.55); backdrop-filter: blur(4px); }
+.modal-card { width: min(620px, 100%); max-height: min(90vh, 760px); overflow: auto; padding: 22px; background: var(--card); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); }
+.modal-card.wide { width: min(980px, 100%); }
+.modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+.modal-head h2 { margin: 0; }
+.icon-button { width: 36px; height: 36px; border-radius: 999px; border: 1px solid var(--line); background: #fff8ef; color: var(--ink); font-size: 24px; line-height: 1; padding: 0; }
+button.danger { background: var(--danger); color: white; }
+textarea { width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; font: inherit; background: #fffdf8; color: var(--ink); }

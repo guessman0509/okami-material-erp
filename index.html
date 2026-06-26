@@ -194,7 +194,7 @@
               <table>
                 <thead>
                   <tr>
-                    <th>採購ID</th><th>日期</th><th>供應商</th><th>品項</th><th>分類</th><th>規格</th><th class="num">數量</th><th>單位</th><th class="num">單價</th><th class="num">金額</th><th>建立人</th>
+                    <th>採購ID</th><th>日期</th><th>供應商</th><th>品項</th><th>分類</th><th>規格</th><th class="num">數量</th><th>單位</th><th class="num">單價</th><th class="num">金額</th><th>狀態</th><th>建立人</th><th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="purchasesBody"></tbody>
@@ -290,7 +290,7 @@
               </div>
               <div>
                 <strong>版本</strong>
-                <span>Okami ERP v3.0：加入員工帳號登入、建立人紀錄、報價單 AI 辨識與分類協助。</span>
+                <span>Okami ERP v3.2：加入採購紀錄編輯、作廢、作廢原因、最後修改人與稽核欄位。</span>
               </div>
               <div>
                 <strong>目前登入人員</strong>
@@ -308,6 +308,63 @@
           </section>
         </section>
       </main>
+    </div>
+
+
+
+    <div id="editPurchaseModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="editPurchaseTitle">
+      <section class="modal-card wide">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Purchase Edit</p>
+            <h2 id="editPurchaseTitle">編輯採購紀錄</h2>
+          </div>
+          <button id="editPurchaseCloseButton" class="icon-button" type="button" aria-label="關閉">×</button>
+        </div>
+        <form id="editPurchaseForm" class="form-grid">
+          <input name="採購ID" type="hidden" />
+          <label>日期<input name="日期" type="date" required /></label>
+          <label>供應商<input name="供應商" type="text" required /></label>
+          <label>品項<input name="品項" type="text" required /></label>
+          <label>標準品項名稱<input name="標準品項名稱" type="text" /></label>
+          <label>分類<select name="分類" id="editCategorySelect"></select></label>
+          <label>規格<input name="規格" type="text" /></label>
+          <label>數量<input name="數量" type="number" min="0" step="0.001" required /></label>
+          <label>單位<select name="單位" id="editUnitSelect"></select></label>
+          <label>換算倍率<input name="換算倍率" type="number" min="0" step="0.001" /></label>
+          <label>標準單位<select name="標準單位" id="editStandardUnitSelect"></select></label>
+          <label>單價<input name="單價" type="number" min="0" step="0.01" required /></label>
+          <label class="span-2">備註<input name="備註" type="text" /></label>
+          <div class="assist-message neutral span-2" id="editPurchasePreview">修改後會自動重算金額、標準數量與標準單價。</div>
+          <div class="form-actions span-2">
+            <button class="primary" type="submit">儲存修改</button>
+            <button id="editPurchaseCancelButton" class="secondary" type="button">取消</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div id="voidPurchaseModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="voidPurchaseTitle">
+      <section class="modal-card">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Void Record</p>
+            <h2 id="voidPurchaseTitle">作廢採購紀錄</h2>
+          </div>
+          <button id="voidPurchaseCloseButton" class="icon-button" type="button" aria-label="關閉">×</button>
+        </div>
+        <form id="voidPurchaseForm" class="stack">
+          <input name="採購ID" type="hidden" />
+          <p id="voidPurchaseSummary" class="muted">請確認要作廢的採購紀錄。</p>
+          <label>作廢原因
+            <textarea name="作廢原因" rows="4" placeholder="例：輸入錯誤、重複建檔、AI 辨識錯誤、測試資料" required></textarea>
+          </label>
+          <div class="form-actions">
+            <button class="danger" type="submit">確認作廢</button>
+            <button id="voidPurchaseCancelButton" class="secondary" type="button">取消</button>
+          </div>
+        </form>
+      </section>
     </div>
 
     <script src="data.js"></script>
